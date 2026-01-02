@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Controle Financeiro - SQLite Local</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <h1>💰 Controle Financeiro</h1>
+        <p class="subtitle">
+          Gerencie seus cartões, parcelamentos e projeções mensais | Armazenamento Local SQLite
+        </p>
+      </header>
+
+      <div class="dashboard">
+        <div class="card summary-card">
+          <h3>Resumo do Mês Atual</h3>
+          <div class="summary-grid">
+            <div class="summary-item">
+              <span class="label">Renda</span>
+              <span class="value positive" id="currentIncome">R$ 0,00</span>
+            </div>
+            <div class="summary-item">
+              <span class="label">Total a Pagar</span>
+              <span class="value negative" id="currentExpenses">R$ 0,00</span>
+            </div>
+            <div class="summary-item">
+              <span class="label">Saldo Final</span>
+              <span class="value" id="currentBalance">R$ 0,00</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tabs">
+        <button class="tab-btn active" data-tab="config">Início</button>
+        <button class="tab-btn" data-tab="invoices">Minhas Faturas</button>
+        <button class="tab-btn" data-tab="payment-view">Pagamentos</button>
+        <button class="tab-btn" data-tab="history">Histórico</button>
+        <button class="tab-btn" data-tab="income">Rendas</button>
+        <button class="tab-btn" data-tab="cards">Cartões</button>
+        <button class="tab-btn" data-tab="installments">Parcelamentos</button>
+        <button class="tab-btn" data-tab="bills">Contas</button>
+        <button class="tab-btn" data-tab="projection">Projeção</button>
+      </div>
+
+      <div class="tab-content active" id="config">
+        <div class="card">
+          <h2>Configurações Iniciais</h2>
+
+          <div class="form-group">
+            <label for="additionalBalance">Saldo Adicional Inicial</label>
+            <input
+              type="number"
+              id="additionalBalance"
+              placeholder="Ex: 1000"
+              step="0.01"
+            />
+            <small>Dinheiro extra que você já tem disponível</small>
+          </div>
+
+          <div class="form-group">
+            <label class="dark-mode-toggle">
+              <input type="checkbox" id="darkModeToggle" />
+              <span>Modo Escuro</span>
+            </label>
+          </div>
+
+          <button class="btn btn-primary" onclick="saveConfig()">
+            Salvar Configurações
+          </button>
+          <button class="btn btn-secondary" onclick="exportToExcel()">
+            Exportar para Excel
+          </button>
+        </div>
+
+        <div class="card">
+          <h2>Gerenciar Categorias</h2>
+
+          <div class="form-section">
+            <h3>Adicionar Nova Categoria</h3>
+            <div class="form-grid">
+              <div class="form-group">
+                <label for="newCategory">Nome da Categoria</label>
+                <input
+                  type="text"
+                  id="newCategory"
+                  placeholder="Ex: Vestuário, Pets"
+                />
+              </div>
+            </div>
+            <button class="btn btn-primary" onclick="addCategory()">
+              Adicionar Categoria
+            </button>
+          </div>
+
+          <div class="list-section">
+            <h3>Categorias Cadastradas</h3>
+            <div id="categoriesList" class="categories-grid"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Análise Visual</h2>
+          <div class="charts-container">
+            <div class="chart-box">
+              <canvas id="expensesPieChart"></canvas>
+            </div>
+            <div class="chart-box">
+              <canvas id="incomeExpensesChart"></canvas>
+            </div>
+            <div class="chart-box">
+              <canvas id="categoriesChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-content" id="invoices">
+        <div class="card">
+          <h2>Minhas Faturas dos Cartões</h2>
+          <div class="form-group">
+            <label for="invoiceMonth">Selecione o Mês</label>
+            <input
+              type="month"
+              id="invoiceMonth"
+              onchange="renderCardInvoices()"
+            />
+          </div>
+          <div id="cardInvoicesContent"></div>
+        </div>
+      </div>
+
+      <div class="tab-content" id="income">
+        <div class="card">
+          <h2>Fontes de Renda</h2>
+
+          <div class="form-section">
+            <h3>Adicionar Nova Fonte de Renda</h3>
+            <div class="form-grid">
+              <div class="form-group">
+                <label for="incomeName">Nome da Fonte</label>
+                <input
+                  type="text"
+                  id="incomeName"
+                  placeholder="Ex: Salário, Freelance"
+                />
+              </div>
+              <div class="form-group">
+                <label for="incomeValue">Valor</label>
+                <input
+                  type="number"
+                  id="incomeValue"
+                  placeholder="Ex: 3000"
+                  step="0.01"
+                />
+              </div>
+              <div class="form-group">
+                <label for="incomeDay">Dia do Recebimento</label>
+                <select id="incomeDay">
+                  <option value="15">Dia 15</option>
+                  <option value="30">Dia 30</option>
+                </select>
+              </div>
+            </div>
+            <button class="btn btn-primary" onclick="addIncome()">
+              Adicionar Renda
+            </button>
+          </div>
+
+          <div class="list-section">
+            <h3>Minhas Fontes de Renda</h3>
+            <div id="incomeList"></div>
+          </div>
+
+          <div class="summary-section">
+            <h3>Resumo de Renda</h3>
+            <div class="income-summary">
+              <div class="income-period">
+                <strong>Dia 15:</strong> <span id="income15">R$ 0,00</span>
+              </div>
+              <div class="income-period">
+                <strong>Dia 30:</strong> <span id="income30">R$ 0,00</span>
+              </div>
+              <div class="income-period total">
+                <strong>Total Mensal:</strong>
+                <span id="incomeTotal">R$ 0,00</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-content" id="cards">
+        <div class="card">
+          <h2>Cartões de Crédito</h2>
+
+          <div class="form-section">
+            <h3>Adicionar Novo Cartão</h3>
+            <div class="form-grid">
+              <div class="form-group">
+                <label for="cardName">Nome do Cartão</label>
+                <input type="text" id="cardName" placeholder="Ex: Nubank" />
+              </div>
+              <div class="form-group">
+                <label for="cardLimit">Limite</label>
+                <input
+                  type="number"
+                  id="cardLimit"
+                  placeholder="Ex: 3000"
+                  step="0.01"
+                />
+              </div>
+              <div class="form-group">
+                <label for="cardDueDay">Dia do Vencimento</label>
+                <input
+                  type="number"
+                  id="cardDueDay"
+                  placeholder="Ex: 10"
+                  min="1"
+                  max="31"
+                />
+              </div>
+              <div class="form-group">
+                <label for="cardClosingDay">Dia do Fechamento</label>
+                <input
+                  type="number"
+                  id="cardClosingDay"
+                  placeholder="Ex: 5"
+                  min="1"
+                  max="31"
+                />
+              </div>
+            </div>
+            <button
+              class="btn btn-primary"
+              id="cardSubmitBtn"
+              onclick="addCard()"
+            >
+              Adicionar Cartão
+            </button>
+          </div>
+
+          <div class="list-section">
+            <h3>Meus Cartões</h3>
+            <div id="cardsList"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-content" id="installments">
+        <div class="card">
+          <h2>Parcelamentos no Cartão</h2>
+
+          <div class="form-section">
+            <h3>Adicionar Parcelamento</h3>
+            <div class="form-grid">
+              <div class="form-group">
+                <label for="installmentCard">Cartão</label>
+                <select id="installmentCard">
+                  <option value="">Selecione um cartão</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="installmentDescription">Descrição</label>
+                <input
+                  type="text"
+                  id="installmentDescription"
+                  placeholder="Ex: Notebook"
+                />
+              </div>
+              <div class="form-group">
+                <label for="installmentMonthlyValue">Valor da Parcela</label>
+                <input
+                  type="number"
+                  id="installmentMonthlyValue"
+                  placeholder="Ex: 250.00"
+                  step="0.01"
+                />
+              </div>
+              <div class="form-group">
+                <label for="installmentCount">Número de Parcelas</label>
+                <input
+                  type="number"
+                  id="installmentCount"
+                  placeholder="Ex: 12"
+                  min="1"
+                />
+              </div>
+              <div class="form-group">
+                <label for="installmentStart">Mês de Início</label>
+                <input type="month" id="installmentStart" />
+              </div>
+            </div>
+            <button
+              class="btn btn-primary"
+              id="installmentSubmitBtn"
+              onclick="addInstallment()"
+            >
+              Adicionar Parcelamento
+            </button>
+          </div>
+
+          <div class="list-section">
+            <h3>Parcelamentos Ativos</h3>
+            <div id="installmentsList"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-content" id="bills">
+        <div class="card">
+          <h2>💵 Contas a Pagar (Dinheiro)</h2>
+
+          <div class="accordion">
+            <div class="accordion-header" onclick="toggleAccordion(this)">
+              <h3>➕ Adicionar Conta Mensal/Única</h3>
+              <span class="accordion-icon">▼</span>
+            </div>
+            <div class="accordion-content">
+              <div class="accordion-body">
+                <div class="form-grid">
+                  <div class="form-group">
+                    <label for="billDescription">Descrição</label>
+                    <input
+                      type="text"
+                      id="billDescription"
+                      placeholder="Ex: Aluguel, Luz, Água"
+                    />
+                  </div>
+                  <div class="form-group">
+                    <label for="billValue">Valor</label>
+                    <input
+                      type="number"
+                      id="billValue"
+                      placeholder="Ex: 500"
+                      step="0.01"
+                    />
+                  </div>
+                  <div class="form-group">
+                    <label for="billDueDay">Dia do Vencimento</label>
+                    <input
+                      type="number"
+                      id="billDueDay"
+                      placeholder="Ex: 10"
+                      min="1"
+                      max="31"
+                    />
+                  </div>
+                  <div class="form-group">
+                    <label for="billCategory">Categoria</label>
+                    <select id="billCategory">
+                      <option value="Outros">Outros</option>
+                      <option value="Alimentação">Alimentação</option>
+                      <option value="Transporte">Transporte</option>
+                      <option value="Saúde">Saúde</option>
+                      <option value="Educação">Educação</option>
+                      <option value="Lazer">Lazer</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label for="billRecurrence">Recorrência</label>
+                    <select id="billRecurrence">
+                      <option value="monthly">Mensal</option>
+                      <option value="once">Única vez</option>
+                    </select>
+                  </div>
+                  <div class="form-group" id="billMonthGroup">
+                    <label for="billMonth">Mês (apenas para conta única)</label>
+                    <input type="month" id="billMonth" />
+                  </div>
+                </div>
+                <button
+                  class="btn btn-primary"
+                  id="billSubmitBtn"
+                  onclick="addBill()"
+                >
+                  Adicionar Conta
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion">
+            <div class="accordion-header" onclick="toggleAccordion(this)">
+              <h3>📝 Adicionar Parcelamento em Dinheiro (Empréstimo)</h3>
+              <span class="accordion-icon">▼</span>
+            </div>
+            <div class="accordion-content">
+              <div class="accordion-body">
+                <div class="form-grid">
+                  <div class="form-group">
+                    <label for="cashInstDesc">Descrição</label>
+                    <input
+                      type="text"
+                      id="cashInstDesc"
+                      placeholder="Ex: Empréstimo Pessoal, Consórcio"
+                    />
+                  </div>
+                  <div class="form-group">
+                    <label for="cashInstValue">Valor da Parcela</label>
+                    <input
+                      type="number"
+                      id="cashInstValue"
+                      placeholder="Ex: 416.67"
+                      step="0.01"
+                    />
+                  </div>
+                  <div class="form-group">
+                    <label for="cashInstCount">Número de Parcelas</label>
+                    <input
+                      type="number"
+                      id="cashInstCount"
+                      placeholder="Ex: 12"
+                      min="1"
+                    />
+                  </div>
+                  <div class="form-group">
+                    <label for="cashInstDay">Dia do Vencimento</label>
+                    <input
+                      type="number"
+                      id="cashInstDay"
+                      placeholder="Ex: 15"
+                      min="1"
+                      max="31"
+                    />
+                  </div>
+                  <div class="form-group">
+                    <label for="cashInstCategory">Categoria</label>
+                    <select id="cashInstCategory">
+                      <option value="Outros">Outros</option>
+                      <option value="Empréstimo">Empréstimo</option>
+                      <option value="Financiamento">Financiamento</option>
+                      <option value="Consórcio">Consórcio</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label for="cashInstStart">Mês de Início</label>
+                    <input type="month" id="cashInstStart" />
+                  </div>
+                </div>
+                <button
+                  class="btn btn-primary"
+                  id="cashInstSubmitBtn"
+                  onclick="addCashInstallment()"
+                >
+                  Adicionar Parcelamento
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion active">
+            <div class="accordion-header" onclick="toggleAccordion(this)">
+              <h3>📋 Minhas Contas Mensais/Únicas</h3>
+              <span class="accordion-icon">▼</span>
+            </div>
+            <div class="accordion-content">
+              <div class="accordion-body">
+                <div id="billsList"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="accordion">
+            <div class="accordion-header" onclick="toggleAccordion(this)">
+              <h3>💳 Meus Parcelamentos em Dinheiro</h3>
+              <span class="accordion-icon">▼</span>
+            </div>
+            <div class="accordion-content">
+              <div class="accordion-body">
+                <div id="cashInstallmentsList"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-content" id="payment-view">
+        <div class="card">
+          <h2>Visualizar Pagamentos por Período</h2>
+
+          <div class="form-group">
+            <label for="viewMonth">Selecione o Mês</label>
+            <input type="month" id="viewMonth" />
+            <button class="btn btn-secondary" onclick="generatePaymentView()">
+              Visualizar
+            </button>
+          </div>
+
+          <div id="paymentViewContent"></div>
+        </div>
+      </div>
+
+      <div class="tab-content" id="history">
+        <div class="card">
+          <h2>Histórico de Pagamentos</h2>
+
+          <div class="history-filters">
+            <div class="form-grid">
+              <div class="form-group">
+                <label for="historyStartMonth">Mês Inicial</label>
+                <input type="month" id="historyStartMonth" />
+              </div>
+              <div class="form-group">
+                <label for="historyEndMonth">Mês Final</label>
+                <input type="month" id="historyEndMonth" />
+              </div>
+              <div class="form-group">
+                <label for="historyType">Tipo</label>
+                <select id="historyType">
+                  <option value="all">Todos</option>
+                  <option value="bill">Contas em Dinheiro</option>
+                  <option value="installment">Cartão de Crédito</option>
+                  <option value="cash-installment">
+                    Parcelamentos em Dinheiro
+                  </option>
+                </select>
+              </div>
+            </div>
+            <button class="btn btn-secondary" onclick="generateHistory()">
+              Filtrar
+            </button>
+            <button class="btn btn-primary" onclick="exportHistoryToExcel()">
+              Exportar Histórico
+            </button>
+          </div>
+
+          <div id="historyContent"></div>
+
+          <div class="history-summary" id="historySummary"></div>
+        </div>
+      </div>
+
+      <div class="tab-content" id="projection">
+        <div class="card">
+          <h2>Projeção Financeira</h2>
+          <div class="form-group">
+            <label for="projectionMonths">Meses para Projetar</label>
+            <input
+              type="number"
+              id="projectionMonths"
+              value="12"
+              min="1"
+              max="60"
+            />
+            <button class="btn btn-secondary" onclick="generateProjection()">
+              Gerar Projeção
+            </button>
+          </div>
+          <div id="projectionTable"></div>
+        </div>
+      </div>
+    </div>
+
+    <script src="script.js"></script>
+  </body>
+</html>

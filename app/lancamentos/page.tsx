@@ -161,8 +161,8 @@ export default function LancamentosPage() {
     setLoading(true);
 
     const totalInstallments = Math.max(1, editTx.installment_total ?? 1);
-    const totalAmount       = Math.abs(Number(editTx.amount));
-    const perInstallment    = totalAmount / totalInstallments;
+    const perInstallment    = Math.abs(Number(editTx.amount));
+    const totalAmount       = perInstallment * totalInstallments;
 
     if (editTx.id) {
       // Edição: atualiza só esta parcela específica
@@ -960,7 +960,7 @@ export default function LancamentosPage() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="label">
-                {editTx.id ? "Valor da Parcela (R$)" : "Valor Total (R$)"}
+                {(editTx.installment_total ?? 1) > 1 ? "Valor da Parcela (R$)" : "Valor (R$)"}
               </label>
               <input className="input" type="number" step="0.01" placeholder="0,00"
                 value={editTx.amount ?? ""}
@@ -1016,7 +1016,7 @@ export default function LancamentosPage() {
             const startInst = Math.max(1, Math.min(editTx.installment_current ?? 1, n));
             const startM    = editTx.month ?? month;
             const startY    = editTx.year  ?? year;
-            const valor     = Number(editTx.amount) / n;
+            const valor     = Number(editTx.amount);
             const remaining = n - startInst + 1;
             const totalIdx  = (startY * 12 + startM - 1) + (remaining - 1);
             const endMonth  = (totalIdx % 12) + 1;
@@ -1025,6 +1025,7 @@ export default function LancamentosPage() {
               <div className="bg-primary-50 dark:bg-primary-900/20 border border-primary-100 dark:border-primary-800/30 rounded-lg p-3 text-xs space-y-0.5">
                 <p className="font-medium text-primary-700 dark:text-primary-400">
                   {formatCurrency(valor)}/parcela × {remaining} {remaining !== n ? `meses restantes (de ${n}x)` : "meses"}
+                  {" "}= <span className="font-bold">{formatCurrency(valor * remaining)}</span>
                 </p>
                 <p className="text-slate-500 dark:text-slate-400">
                   De {MONTHS[startM - 1]}/{startY} ({startInst}/{n}) até {MONTHS[endMonth - 1]}/{endYear} ({n}/{n})

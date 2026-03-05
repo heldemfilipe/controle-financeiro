@@ -1,5 +1,15 @@
 import { MONTHS } from "@/types";
-import type { FixedBill } from "@/types";
+import type { FixedBill, CardTransaction } from "@/types";
+
+/** Soma o valor absoluto de todas as transações de cartão. */
+export function sumTransactions(txs: CardTransaction[]): number {
+  return txs.reduce((s, t) => s + Math.abs(t.amount), 0);
+}
+
+/** Filtra contas que não são dízimo. */
+export function filterRegularBills(bills: FixedBill[]): FixedBill[] {
+  return bills.filter(b => !b.is_tithe);
+}
 
 export function formatCurrency(value: number): string {
   return new Intl.NumberFormat("pt-BR", {
@@ -25,10 +35,6 @@ export function getCurrentMonth(): { month: number; year: number } {
 
 export function cn(...classes: (string | undefined | null | false)[]): string {
   return classes.filter(Boolean).join(" ");
-}
-
-export function getDueDayLabel(day: number): string {
-  return `Dia ${day.toString().padStart(2, "0")}`;
 }
 
 export function isOverdue(dueDay: number, month: number, year: number): boolean {

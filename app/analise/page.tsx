@@ -12,9 +12,10 @@ import {
   getMonthlyBillPayments, getMonthlyIncomes, getIncomeSources,
   getCardTotalsByMonth,
 } from "@/lib/queries";
-import { formatCurrency, getCurrentMonth, getMonthName } from "@/lib/utils";
+import { formatCurrency, getCurrentMonth, getMonthName, sumTransactions, filterRegularBills } from "@/lib/utils";
 import { MONTH_SHORT } from "@/types";
 import type { Category, FixedBill } from "@/types";
+import { ChartTooltip } from "@/components/ui/ChartTooltip";
 
 // ─── Cores padrão quando a categoria não tem cor definida ─────────────────────
 const FALLBACK_COLORS = [
@@ -24,28 +25,6 @@ const FALLBACK_COLORS = [
 
 function colorOf(cats: Category[], name: string, idx: number): string {
   return cats.find(c => c.name === name)?.color ?? FALLBACK_COLORS[idx % FALLBACK_COLORS.length];
-}
-
-// ─── Tooltip customizado ──────────────────────────────────────────────────────
-
-function ChartTooltip({ active, payload, label }: any) {
-  if (!active || !payload?.length) return null;
-  return (
-    <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl shadow-lg p-3 text-xs space-y-1 min-w-[160px]">
-      {label && <p className="font-semibold text-slate-700 dark:text-slate-200 mb-1.5">{label}</p>}
-      {payload.map((entry: any) => (
-        <div key={entry.name} className="flex justify-between gap-4">
-          <span className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: entry.color ?? entry.fill }} />
-            <span className="text-slate-600 dark:text-slate-300">{entry.name}</span>
-          </span>
-          <span className="font-semibold text-slate-800 dark:text-slate-100">
-            {formatCurrency(entry.value)}
-          </span>
-        </div>
-      ))}
-    </div>
-  );
 }
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
@@ -79,17 +58,17 @@ export default function AnalisePage() {
       ]);
 
       setCategories(cats);
-      setFixedBills(bills.filter(b => !b.is_tithe));
+      setFixedBills(filterRegularBills(bills));
 
       // Valor efetivo de cada conta no mês (payment sobrescreve base)
       const billAmts: Record<string, number> = {};
-      bills.filter(b => !b.is_tithe).forEach(b => {
+      filterRegularBills(bills).forEach(b => {
         const p = payments.find(p => p.bill_id === b.id);
         billAmts[b.id] = p?.amount ?? b.amount;
       });
       setMonthlyBillAmt(billAmts);
 
-      const cardTot = txs.reduce((s, t) => s + Math.abs(t.amount), 0);
+      const cardTot = sumTransactions(txs);
       setCardTotal(cardTot);
 
       const inc = sources.reduce((s, src) => {
@@ -211,7 +190,7 @@ export default function AnalisePage() {
                         <Cell key={i} fill={entry.color} />
                       ))}
                     </Pie>
-                    <Tooltip content={<ChartTooltip />} />
+                    <Tooltip content={<ChartTooltip showDot />} />
                     <Legend
                       formatter={(value) => (
                         <span className="text-xs text-slate-600 dark:text-slate-300">{value}</span>

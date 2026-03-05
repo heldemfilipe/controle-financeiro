@@ -1,25 +1,70 @@
+<div align="center">
+
+<img src="https://img.shields.io/badge/Next.js-14-000000?style=for-the-badge&logo=nextdotjs&logoColor=white" />
+<img src="https://img.shields.io/badge/TypeScript-5-3178C6?style=for-the-badge&logo=typescript&logoColor=white" />
+<img src="https://img.shields.io/badge/Tailwind_CSS-3.4-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white" />
+<img src="https://img.shields.io/badge/Supabase-PostgreSQL-3ECF8E?style=for-the-badge&logo=supabase&logoColor=white" />
+<img src="https://img.shields.io/badge/Deploy-Vercel-000000?style=for-the-badge&logo=vercel&logoColor=white" />
+
+<br /><br />
+
 # 💰 Controle Financeiro
 
-Sistema de controle financeiro pessoal para casais e famílias, construído com Next.js 14, Supabase e Tailwind CSS.
+**App de controle financeiro pessoal e familiar.**
+Gerencie receitas, contas fixas e cartões de crédito com gráficos interativos, dark mode e acesso autenticado.
 
-> Gerencie receitas, contas fixas, cartões de crédito e acompanhe o saldo acumulado mês a mês — tudo em um único lugar.
+<br />
+
+[**Reportar Bug**](../../issues) · [**Sugerir Feature**](../../issues)
+
+</div>
 
 ---
 
 ## ✨ Funcionalidades
 
-- **Dashboard** — visão geral do mês com gráfico anual de receitas vs despesas e linha de saldo acumulado
-- **Gastos Mensais** — controle de pagamentos por quinzena (pago/pendente/vencido), alertas de vencimento próximo e carry-over acumulado
-- **Lançamentos** — CRUD completo de receitas, contas fixas e transações de cartão com parcelamento dinâmico
-- **Faturas** — detalhamento mensal por cartão
-- **Gastos Anuais** — KPIs, gráficos de área e tabela comparativa dos 12 meses
-- **Análise por Categoria** — distribuição de gastos com gráficos
+<table>
+<tr>
+<td width="50%">
+
+### 📊 Visualizações
+- **Dashboard** — receitas vs despesas (12 meses), saldo acumulado e distribuição por categoria
+- **Gastos Anuais** — KPIs anuais, gráfico de área, perfil de gastos (radar), taxa de poupança
+- **Análise por Categoria** — pizza interativa com detalhamento e barras anuais empilhadas
 - **Gastos por Cartão** — comparativo entre cartões, top compras e estabelecimentos
-- **Configurações** — CRUD de fontes de renda, cartões e contas fixas com preview visual
-- **Saldo Acumulado** — carry-over configurável com saldo inicial personalizado e mês de início
-- **Dízimo automático** — calculado como 10% da renda, agrupado dinamicamente por owner
-- **Dark / Light mode** — alterna sem flash de tela
-- **Parcelas inteligentes** — calcula a parcela correta para cada mês e oculta contas fora do período
+
+</td>
+<td width="50%">
+
+### 📅 Controle Mensal
+- **Gastos do Mês** — toggle pago/não pago com alerta de vencimento próximo
+- **Faturas** — transações detalhadas por cartão com histórico anual
+- **Lançamentos** — CRUD completo de receitas, contas fixas e transações de cartão
+- **Saldo Acumulado** — carry-over configurável com saldo inicial personalizado
+
+</td>
+</tr>
+<tr>
+<td width="50%">
+
+### ⚙️ Configurações
+- **Fontes de Renda** — múltiplos owners (`pessoa1`, `pessoa2`, `casal`)
+- **Cartões de Crédito** — preview visual com cor customizável
+- **Contas Fixas** — parcelamento inteligente com cálculo dinâmico por mês
+- **Dízimo Automático** — calculado como 10% da renda do mês
+
+</td>
+<td width="50%">
+
+### 🔐 Autenticação & Admin
+- **Login com e-mail/senha** via Supabase Auth
+- **Gerenciamento de usuários** — criar, editar, desativar e redefinir senhas
+- **Roles** — Admin e Usuário Comum
+- **Responsivo** — layout adaptado para celular e desktop
+
+</td>
+</tr>
+</table>
 
 ---
 
@@ -27,19 +72,20 @@ Sistema de controle financeiro pessoal para casais e famílias, construído com 
 
 | Tecnologia | Versão | Uso |
 |---|---|---|
-| [Next.js](https://nextjs.org) | 14 (App Router) | Framework React |
-| [TypeScript](https://www.typescriptlang.org) | 5.x | Tipagem estática |
-| [Tailwind CSS](https://tailwindcss.com) | 3.4 | Estilização |
-| [Supabase](https://supabase.com) | — | Banco de dados PostgreSQL + API |
-| [Recharts](https://recharts.org) | 2.x | Gráficos interativos |
+| [Next.js](https://nextjs.org) | 14 (App Router) | Framework React com SSR e API Routes |
+| [TypeScript](https://www.typescriptlang.org) | 5.x | Tipagem estática em todo o projeto |
+| [Tailwind CSS](https://tailwindcss.com) | 3.4 | Estilização responsiva com dark mode |
+| [Supabase](https://supabase.com) | — | Banco PostgreSQL + Auth + RLS |
+| [Recharts](https://recharts.org) | 2.x | Bar, Line, Pie, Radar, Area charts |
 | [Lucide React](https://lucide.dev) | — | Ícones |
-| [Vercel](https://vercel.com) | — | Deploy |
+| [@supabase/ssr](https://supabase.com/docs/guides/auth/server-side/nextjs) | — | Auth com cookies e middleware |
+| [Vercel](https://vercel.com) | — | Deploy e CI/CD |
 
 ---
 
 ## 🚀 Início Rápido
 
-### 1. Clone o repositório
+### 1. Clone e instale
 
 ```bash
 git clone https://github.com/seu-usuario/controle-financeiro.git
@@ -47,102 +93,81 @@ cd controle-financeiro
 npm install
 ```
 
-### 2. Crie o projeto no Supabase
+### 2. Configure o Supabase
 
-1. Acesse [supabase.com](https://supabase.com) e crie um novo projeto
-2. No painel, vá em **SQL Editor** e execute os arquivos na ordem:
-   - `supabase/schema.sql` — cria todas as tabelas e índices
-   - `supabase/seed.sql` — insere dados de exemplo *(personalize antes de executar)*
+1. Crie um projeto em [supabase.com](https://supabase.com)
+2. No **SQL Editor**, execute os arquivos na ordem:
 
-### 3. Configure as variáveis de ambiente
+```
+supabase/schema.sql   ← cria tabelas, índices e políticas RLS
+supabase/seed.sql     ← dados de exemplo (opcional)
+```
+
+### 3. Variáveis de ambiente
 
 ```bash
 cp .env.example .env.local
 ```
 
-Edite `.env.local` com suas credenciais (encontradas em **Supabase → Project Settings → API**):
+| Variável | Onde encontrar | Obrigatória |
+|---|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | Project Settings → API → Project URL | ✅ |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Project Settings → API → anon/public | ✅ |
+| `SUPABASE_SERVICE_ROLE_KEY` | Project Settings → API → service_role | ✅ (admin) |
+| `NEXT_PUBLIC_APP_NAME` | Qualquer texto (ex: `João & Maria`) | ⬜ |
+| `NEXT_PUBLIC_APP_YEAR` | Ano exibido na sidebar (ex: `2026`) | ⬜ |
 
-```env
-NEXT_PUBLIC_SUPABASE_URL=https://xxxxxxxxxxxxxxxxxxxx.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=sua-anon-key-aqui
+> ⚠️ **Nunca** prefixe `SUPABASE_SERVICE_ROLE_KEY` com `NEXT_PUBLIC_` — ela deve ficar **apenas no servidor**.
 
-# Opcional — personaliza o nome exibido na sidebar
-NEXT_PUBLIC_APP_NAME=João & Maria
-NEXT_PUBLIC_APP_YEAR=2026
-```
-
-### 4. Inicie o servidor de desenvolvimento
+### 4. Rode localmente
 
 ```bash
 npm run dev
+# Acesse http://localhost:3000
 ```
-
-Acesse [http://localhost:3000](http://localhost:3000).
 
 ---
 
-## ⚙️ Configuração
+## 🔐 Configurar o primeiro Admin
 
-### Owners (proprietários dos recursos)
+**1.** Crie o usuário em **Authentication → Users → Add user**
 
-O campo `owner` é texto livre — use qualquer identificador:
+**2.** Execute no **SQL Editor** para promovê-lo a admin:
 
-```
-"joao", "maria", "casal", "pessoa1", "familia" ...
-```
-
-Configure os owners diretamente via **Configurações → Fontes de Renda** e **Configurações → Cartões** no próprio app.
-
-### Nome exibido na Sidebar
-
-Defina `NEXT_PUBLIC_APP_NAME` no `.env.local`. Suporta qualquer texto, incluindo `&`:
-
-```env
-NEXT_PUBLIC_APP_NAME=João & Maria
+```sql
+UPDATE auth.users
+SET raw_user_meta_data = raw_user_meta_data || '{"role": "admin"}'::jsonb
+WHERE email = 'seu@email.com';
 ```
 
-### Dízimo (10% da renda)
+**3.** Faça login → a aba **Usuários** aparece em Configurações
 
-Na aba **Configurações → Contas**, marque uma conta como **Dízimo**. O valor é calculado automaticamente como 10% da renda total do mês, com breakdown por owner. Para não usar, simplesmente não crie essa conta (ou desative).
-
-### Saldo Acumulado (Carry-over)
-
-Em **Gastos do Mês**, clique no ícone ⚙️ no banner de carry-over para configurar:
-
-| Campo | Descrição |
-|---|---|
-| **Saldo Inicial** | Valor que você já tinha antes de começar a usar o app (ex.: poupança) |
-| **Início do Acumulado** | Mês/ano de onde começa a somar — meses anteriores são ignorados |
-
-> **Dica:** Para desconsiderar meses com dados incompletos, defina o "Início do Acumulado" como o primeiro mês confiável.
-
-### Parcelamento de Contas
-
-Ao criar uma conta fixa com parcelas em **Lançamentos → Contas**, informe:
-- **Total de parcelas** — quantas no total
-- **Parcela atual** — qual é este mês
-
-O sistema calcula automaticamente o mês de início e oculta a conta em meses fora do seu período.
+A partir daí, novos usuários são criados e gerenciados diretamente pelo app (sem precisar acessar o Supabase).
 
 ---
 
-## 🗄️ Banco de Dados
+## 🗄 Banco de Dados
 
 ### Tabelas
 
 | Tabela | Descrição |
 |---|---|
-| `income_sources` | Fontes de renda (salário, extra, etc.) |
-| `fixed_bills` | Contas fixas (com suporte a parcelamento) |
-| `credit_cards` | Cartões de crédito cadastrados |
-| `card_transactions` | Lançamentos por cartão e mês |
-| `monthly_bill_payments` | Status de pagamento mensal das contas |
-| `monthly_card_payments` | Status de pagamento mensal das faturas |
-| `monthly_incomes` | Registros de recebimento mensais |
+| `income_sources` | Fontes de renda com suporte a múltiplos owners e renda recorrente/extra |
+| `fixed_bills` | Contas fixas com parcelamento dinâmico e flag de dízimo |
+| `credit_cards` | Cartões com cor, banco e dia de vencimento |
+| `card_transactions` | Lançamentos por cartão/mês |
+| `monthly_bill_payments` | Status pago/pendente das contas por mês (sobrescreve valor base) |
+| `monthly_card_payments` | Status pago/pendente das faturas por mês |
+| `monthly_incomes` | Recebimentos mensais por fonte (sobrescreve valor base) |
 
-### Row Level Security
+### Recursos especiais
 
-Todas as tabelas têm RLS habilitado com acesso total via `anon key` — adequado para uso pessoal/privado. Para multi-usuário com autenticação, substitua as policies por `auth.uid() = user_id`.
+| Conceito | Como funciona |
+|---|---|
+| **Dízimo** | `is_tithe = true` + `amount = 0` no banco — o app calcula 10% da renda dinamicamente |
+| **Parcelas** | `installment_start_month/year` definem o início; o app calcula qual parcela exibir e oculta fora do período |
+| **Owner** | Campo texto livre — use `"joao"`, `"maria"`, `"casal"` ou qualquer identificador |
+| **RLS** | Habilitado em todas as tabelas com `allow_all` via anon key (adequado para app pessoal/privado) |
 
 ---
 
@@ -150,25 +175,32 @@ Todas as tabelas têm RLS habilitado com acesso total via `anon key` — adequad
 
 ```
 ├── app/
-│   ├── page.tsx                 # Dashboard
-│   ├── gastos-anuais/           # Visão anual com KPIs e gráficos
-│   ├── gastos-mensais/          # Controle mensal por quinzena
-│   ├── lancamentos/             # CRUD receitas, contas e cartões
-│   ├── faturas/                 # Faturas detalhadas por cartão
-│   ├── analise/                 # Análise por categoria
-│   ├── gastos-cartoes/          # Análise comparativa por cartão
-│   └── configuracoes/           # Configurações gerais
+│   ├── page.tsx                    # Dashboard
+│   ├── gastos-anuais/              # Visão anual
+│   ├── gastos-mensais/             # Controle mensal
+│   ├── lancamentos/                # CRUD receitas, contas e cartões
+│   ├── faturas/                    # Faturas por cartão
+│   ├── analise/                    # Análise por categoria
+│   ├── gastos-cartoes/             # Comparativo entre cartões
+│   ├── configuracoes/              # Configurações + Gerenciamento de usuários
+│   ├── login/                      # Tela de login
+│   └── api/admin/users/            # API routes para operações de admin
 ├── components/
-│   ├── layout/Sidebar.tsx
-│   └── ui/                      # Modal, Toggle, MonthSelector, SummaryCard, etc.
+│   ├── layout/
+│   │   ├── Sidebar.tsx             # Sidebar com logout e email do usuário
+│   │   └── LayoutShell.tsx         # Layout responsivo com menu hamburger mobile
+│   └── ui/                         # Modal, Toggle, MonthSelector, ChartTooltip…
 ├── lib/
-│   ├── supabase.ts              # Cliente Supabase
-│   ├── queries.ts               # Queries do banco de dados
-│   └── utils.ts                 # Helpers (formatação, datas, parcelas, carry-over)
-├── types/index.ts               # Tipos TypeScript globais
+│   ├── supabase.ts                 # Cliente Supabase para queries
+│   ├── supabase-browser.ts         # Cliente browser para auth
+│   ├── supabase-admin.ts           # Cliente server-side com service role
+│   ├── queries.ts                  # Todas as queries do banco
+│   └── utils.ts                    # Helpers: formatCurrency, computeInstallment, sumTransactions…
+├── middleware.ts                    # Protege rotas, redireciona para /login
+├── types/index.ts                   # Tipos TypeScript globais
 └── supabase/
-    ├── schema.sql               # Criação das tabelas e índices
-    └── seed.sql                 # Dados de exemplo para começar
+    ├── schema.sql                   # Schema completo com RLS
+    └── seed.sql                     # Dados genéricos de exemplo
 ```
 
 ---
@@ -178,23 +210,39 @@ Todas as tabelas têm RLS habilitado com acesso total via `anon key` — adequad
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new)
 
 1. Importe o repositório na [Vercel](https://vercel.com)
-2. Adicione as variáveis de ambiente (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`)
-3. Deploy automático a cada push na branch `main`
+2. Configure as variáveis de ambiente em **Settings → Environment Variables**
+3. Deploy automático a cada push em `main`
 
 ---
 
-## 🤝 Contribuindo
+## ⚙️ Personalização
 
-Contribuições são bem-vindas!
+### Owners (membros da família)
 
-1. Fork este repositório
-2. Crie uma branch: `git checkout -b feat/minha-feature`
-3. Commit suas mudanças: `git commit -m "feat: descrição da feature"`
-4. Push: `git push origin feat/minha-feature`
-5. Abra um Pull Request
+O `owner` é texto livre — altere direto nos cadastros pelo app:
+
+```
+"joao"    "maria"    "casal"    "empresa"    "pessoa1"    ...
+```
+
+### Cores dos cartões
+
+Configure via **Configurações → Cartões** com color picker e paleta rápida de 7 cores.
+
+### Saldo Acumulado
+
+Em **Gastos do Mês → ícone ⚙️**, configure:
+- **Saldo Inicial** — poupança ou valor já existente antes de usar o app
+- **Início do Acumulado** — mês/ano de onde começa a somar o carry-over
 
 ---
 
 ## 📝 Licença
 
 [MIT](LICENSE) — use, modifique e distribua livremente.
+
+---
+
+<div align="center">
+Feito com Next.js + Supabase
+</div>

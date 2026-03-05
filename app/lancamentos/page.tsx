@@ -49,6 +49,7 @@ export default function LancamentosPage() {
   const [editTx,     setEditTx]     = useState<Partial<CardTransaction>>({});
   const [editCat,    setEditCat]    = useState<Partial<Category>>({});
   const [loading, setLoading] = useState(false);
+  const [billTotalValue, setBillTotalValue] = useState<number | "">("");
 
   useEffect(() => { loadAll(); }, [month, year]);
 
@@ -359,7 +360,7 @@ export default function LancamentosPage() {
                 <Plus size={14} /> Categoria
               </button>
               <button
-                onClick={() => { setEditBill({}); setBillModal(true); }}
+                onClick={() => { setEditBill({}); setBillTotalValue(""); setBillModal(true); }}
                 className="btn-primary flex items-center gap-1.5"
               >
                 <Plus size={14} /> Nova Conta
@@ -404,7 +405,7 @@ export default function LancamentosPage() {
                         </span>
                         <div className="flex gap-1">
                           <button
-                            onClick={() => { setEditBill(bill); setBillModal(true); }}
+                            onClick={() => { setEditBill(bill); setBillTotalValue(""); setBillModal(true); }}
                             className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg"
                           >
                             <Pencil size={13} className="text-slate-400 dark:text-slate-500" />
@@ -616,7 +617,7 @@ export default function LancamentosPage() {
       </Modal>
 
       {/* ── MODAL: Nova Conta ── */}
-      <Modal open={billModal} onClose={() => { setBillModal(false); setEditBill({}); }}
+      <Modal open={billModal} onClose={() => { setBillModal(false); setEditBill({}); setBillTotalValue(""); }}
         title={editBill.id ? "Editar Conta" : "Nova Conta"}>
         <div className="space-y-3">
           <div>
@@ -627,7 +628,7 @@ export default function LancamentosPage() {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="label">Valor (R$)</label>
+              <label className="label">Valor da Parcela (R$)</label>
               <input className="input" type="number" step="0.01" placeholder="0,00"
                 value={editBill.amount ?? ""}
                 onChange={e => setEditBill(p => ({ ...p, amount: Number(e.target.value) }))} />
@@ -636,9 +637,14 @@ export default function LancamentosPage() {
               <label className="label">Dia de Vencimento</label>
               <input className="input" type="number" min="1" max="31" placeholder="10"
                 value={editBill.due_day ?? ""}
-                onChange={e => setEditBill(p => ({ ...p, due_day: Number(e.target.value) }))} />
+                onChange={e => {
+                  const day = Number(e.target.value) || null;
+                  const autoPeriod = day ? (day <= 15 ? "1-15" : "16-30") : undefined;
+                  setEditBill(p => ({ ...p, due_day: day, ...(autoPeriod ? { period: autoPeriod as any } : {}) }));
+                }} />
             </div>
           </div>
+
           <div className="grid grid-cols-2 gap-3">
             {/* Categoria customizável */}
             <div>
@@ -681,6 +687,35 @@ export default function LancamentosPage() {
             </div>
           </div>
 
+          {/* Calculadora: preenche valor da parcela a partir do total financiado */}
+          {(editBill.installment_total ?? 0) > 1 && (
+            <div className="bg-slate-50 dark:bg-slate-700/40 rounded-lg px-3 py-2.5">
+              <p className="text-xs text-slate-500 dark:text-slate-400 mb-1.5">
+                Calcular parcela do total financiado:
+              </p>
+              <div className="flex items-center gap-2">
+                <input
+                  className="input text-sm flex-1"
+                  type="number" step="0.01" placeholder="Valor total (ex: 50000)"
+                  value={billTotalValue}
+                  onChange={e => {
+                    const total = e.target.value === "" ? "" : Number(e.target.value);
+                    setBillTotalValue(total);
+                    if (total !== "" && total > 0 && editBill.installment_total) {
+                      setEditBill(p => ({ ...p, amount: parseFloat((total / editBill.installment_total!).toFixed(2)) }));
+                    }
+                  }}
+                />
+                <span className="text-xs text-slate-400 dark:text-slate-500 shrink-0">
+                  ÷ {editBill.installment_total}x
+                  {billTotalValue !== "" && Number(billTotalValue) > 0 && editBill.installment_total
+                    ? ` = ${new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(billTotalValue) / editBill.installment_total)}`
+                    : ""}
+                </span>
+              </div>
+            </div>
+          )}
+
           {/* Obs separado */}
           <div>
             <label className="label">Obs</label>
@@ -702,7 +737,7 @@ export default function LancamentosPage() {
             return (
               <div className="bg-slate-50 dark:bg-slate-700/50 rounded-lg px-3 py-2 space-y-0.5">
                 <p className="text-xs font-medium text-slate-700 dark:text-slate-200">
-                  Parcela {cur}/{n} · {formatCurrency((editBill.amount ?? 0) / n)}/mês · falta {remaining}x
+                  Parcela {cur}/{n} · {formatCurrency(editBill.amount ?? 0)}/mês · falta {remaining}x
                 </p>
                 <p className="text-xs text-slate-400 dark:text-slate-500">
                   Início: {MONTHS[sm - 1]}/{sy} · Término: {MONTHS[end.month - 1]}/{end.year}
@@ -712,7 +747,7 @@ export default function LancamentosPage() {
           })()}
 
           <div className="flex gap-2 pt-2">
-            <button onClick={() => { setBillModal(false); setEditBill({}); }}
+            <button onClick={() => { setBillModal(false); setEditBill({}); setBillTotalValue(""); }}
               className="btn-secondary flex-1">Cancelar</button>
             <button onClick={saveBill} disabled={loading}
               className="btn-primary flex-1">Salvar</button>

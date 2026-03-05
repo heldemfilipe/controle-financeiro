@@ -98,7 +98,7 @@ export default function GastosMensaisPage() {
         getCreditCards(),
         getMonthlyCardPayments(month, year),
         getCardTransactions(month, year),
-        getIncomeSources(),
+        getIncomeSources(month, year),
         getMonthlyIncomes(month, year),
       ]);
 

@@ -56,9 +56,10 @@ export default function GastosAnuaisPage() {
             getCardTransactions(month, year),
           ]);
 
-          // Receitas
+          // Receitas — avulsas só entram se tiverem registro mensal
           const receitas = sources.reduce((s, src) => {
             const mi = incomes.find(m => m.source_id === src.id);
+            if (src.is_recurring === false) return mi ? s + mi.amount : s;
             return s + (mi?.amount ?? src.base_amount);
           }, 0);
 

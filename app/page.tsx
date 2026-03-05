@@ -60,18 +60,20 @@ export default function DashboardPage() {
         getFixedBills(),
         getCreditCards(),
         getMonthlyCardPayments(month, year),
-        getIncomeSources(),
+        getIncomeSources(month, year),
       ]);
 
-      // Base recorrente: usado como fallback quando não há registros mensais
+      // Base recorrente: usado como fallback no gráfico anual (fontes que não têm registros)
       const baseRecurringIncome = incomeSrcs
         .filter(s => s.is_recurring !== false)
         .reduce((s, src) => s + src.base_amount, 0);
 
-      // Receita do mês: usa registros mensais ou renda recorrente base
-      const inc = incomes.length > 0
-        ? incomes.reduce((s, i) => s + i.amount, 0)
-        : baseRecurringIncome;
+      // Receita do mês: por fonte — usa registro mensal se existir, senão valor base
+      // incomeSrcs já está filtrado para o mês/ano (inclui avulsas deste mês)
+      const inc = incomeSrcs.reduce((s, src) => {
+        const mi = incomes.find(i => i.source_id === src.id);
+        return s + (mi?.amount ?? src.base_amount);
+      }, 0);
 
       // Separa dízimo das contas regulares
       const titheBillItem = allBills.find(b => b.is_tithe);

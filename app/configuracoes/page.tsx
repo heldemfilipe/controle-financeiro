@@ -36,7 +36,6 @@ export default function ConfiguracoesPage() {
   const [editSource, setEditSource] = useState<Partial<IncomeSource>>({});
   const [editCard, setEditCard] = useState<Partial<CreditCardType>>({});
   const [editBill, setEditBill] = useState<Partial<FixedBill>>({});
-  const [billTotalValue, setBillTotalValue] = useState<number | "">("");
 
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: string; id: string; name: string } | null>(null);
 
@@ -454,7 +453,7 @@ export default function ConfiguracoesPage() {
             <p className="text-xs text-slate-500 dark:text-slate-400">
               Contas recorrentes mensais. Organize por período e categoria para melhor controle.
             </p>
-            <button onClick={() => { setEditBill({}); setBillTotalValue(""); setBillModal(true); }}
+            <button onClick={() => { setEditBill({}); setBillModal(true); }}
               className="btn-primary flex items-center gap-1.5 shrink-0">
               <Plus size={14} /> Nova Conta
             </button>
@@ -517,7 +516,7 @@ export default function ConfiguracoesPage() {
                         <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{formatCurrency(bill.amount)}</p>
                         <Toggle size="sm" checked={bill.active} onChange={() => toggleBillActive(bill)} />
                         <div className="flex gap-1">
-                          <button onClick={() => { setEditBill(bill); setBillTotalValue(""); setBillModal(true); }}
+                          <button onClick={() => { setEditBill(bill); setBillModal(true); }}
                             className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
                             <Pencil size={13} className="text-slate-400 dark:text-slate-500" />
                           </button>
@@ -538,7 +537,7 @@ export default function ConfiguracoesPage() {
               <div className="bg-white dark:bg-slate-800 border-2 border-dashed border-slate-200 dark:border-slate-600 rounded-xl p-8 text-center transition-colors">
                 <FileText size={28} className="text-slate-300 dark:text-slate-600 mx-auto mb-2" />
                 <p className="text-slate-500 dark:text-slate-400 text-sm mb-3">Nenhuma conta cadastrada</p>
-                <button onClick={() => { setEditBill({}); setBillTotalValue(""); setBillModal(true); }}
+                <button onClick={() => { setEditBill({}); setBillModal(true); }}
                   className="btn-primary">Adicionar Conta</button>
               </div>
             )}
@@ -797,7 +796,7 @@ export default function ConfiguracoesPage() {
       </Modal>
 
       {/* ── MODAL: Conta Fixa ── */}
-      <Modal open={billModal} onClose={() => { setBillModal(false); setEditBill({}); setBillTotalValue(""); }}
+      <Modal open={billModal} onClose={() => { setBillModal(false); setEditBill({}); }}
         title={editBill.id ? "Editar Conta Fixa" : "Nova Conta Fixa"} size="lg">
         <div className="space-y-3">
           <div>
@@ -865,36 +864,8 @@ export default function ConfiguracoesPage() {
             </div>
           </div>
 
-          {/* Calculadora: preenche valor da parcela a partir do total financiado */}
-          {(editBill.installment_total ?? 0) > 1 && (
-            <div className="bg-slate-50 dark:bg-slate-700/40 rounded-lg px-3 py-2.5">
-              <p className="text-xs text-slate-500 dark:text-slate-400 mb-1.5">
-                Calcular parcela do total financiado:
-              </p>
-              <div className="flex items-center gap-2">
-                <input
-                  className="input text-sm flex-1"
-                  type="number" step="0.01" placeholder="Valor total (ex: 50000)"
-                  value={billTotalValue}
-                  onChange={e => {
-                    const total = e.target.value === "" ? "" : Number(e.target.value);
-                    setBillTotalValue(total);
-                    if (total !== "" && total > 0 && editBill.installment_total) {
-                      setEditBill(p => ({ ...p, amount: parseFloat((total / editBill.installment_total!).toFixed(2)) }));
-                    }
-                  }}
-                />
-                <span className="text-xs text-slate-400 dark:text-slate-500 shrink-0">
-                  ÷ {editBill.installment_total}x
-                  {billTotalValue !== "" && Number(billTotalValue) > 0 && editBill.installment_total
-                    ? ` = ${new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(billTotalValue) / editBill.installment_total)}`
-                    : ""}
-                </span>
-              </div>
-            </div>
-          )}
           <div className="flex gap-2 pt-2">
-            <button onClick={() => { setBillModal(false); setEditBill({}); setBillTotalValue(""); }} className="btn-secondary flex-1">Cancelar</button>
+            <button onClick={() => { setBillModal(false); setEditBill({}); }} className="btn-secondary flex-1">Cancelar</button>
             <button onClick={saveBill} disabled={loading} className="btn-primary flex-1 flex items-center justify-center gap-2">
               <Save size={14} /> Salvar
             </button>

@@ -49,8 +49,8 @@ export default function LancamentosPage() {
   const [editTx,     setEditTx]     = useState<Partial<CardTransaction>>({});
   const [editCat,    setEditCat]    = useState<Partial<Category>>({});
   const [loading, setLoading] = useState(false);
-  const [billTotalValue, setBillTotalValue] = useState<number | "">("");
-  const [txInstallmentValue, setTxInstallmentValue] = useState<number | "">("");
+  const [billGroupMode, setBillGroupMode] = useState<"quinzena" | "categoria">("quinzena");
+  const [txSortByCategory, setTxSortByCategory] = useState<Record<string, boolean>>({});
 
   useEffect(() => { loadAll(); }, [month, year]);
 
@@ -201,7 +201,7 @@ export default function LancamentosPage() {
       await insertCardTransactions(parcelas);
     }
 
-    setTxModal(false); setEditTx({}); setTxInstallmentValue("");
+    setTxModal(false); setEditTx({});
     await loadAll(); setLoading(false);
   }
 
@@ -223,28 +223,51 @@ export default function LancamentosPage() {
     total: cardTxs.filter(t => t.card_id === card.id).reduce((s, t) => s + Math.abs(t.amount), 0),
   })).filter(c => c.txs.length > 0 || true);
 
-  // Agrupamento dinâmico: período × categoria (suporta categorias customizadas)
+  // Agrupamento: por quinzena (padrão) ou por categoria
   const billsByGroup = (() => {
-    const groups: { label: string; bills: FixedBill[] }[] = [];
-    const periods: [string | null, string][] = [
-      ["1-15",  "1ª Quinzena"],
-      ["16-30", "2ª Quinzena"],
-      [null,    "Sem período"],
-    ];
-    periods.forEach(([key, periodLabel]) => {
-      const periodBills = fixedBills.filter(b => (b.period ?? null) === key);
-      const cats = Array.from(new Set(periodBills.map(b => b.category || "outros")));
-      cats.forEach(cat => {
-        const bills = periodBills.filter(b => (b.category || "outros") === cat);
-        if (bills.length > 0) {
-          const label = key
-            ? `${cat.charAt(0).toUpperCase() + cat.slice(1)} · ${periodLabel}`
-            : periodLabel;
-          groups.push({ label, bills });
-        }
+    const sortByDueDay = (a: FixedBill, b: FixedBill) =>
+      (a.due_day ?? 99) - (b.due_day ?? 99);
+
+    if (billGroupMode === "quinzena") {
+      // Agrupa por período, items ordenados por dia de vencimento
+      const periods: [string | null, string][] = [
+        ["1-15",  "1ª Quinzena"],
+        ["16-30", "2ª Quinzena"],
+        [null,    "Sem período"],
+      ];
+      return periods
+        .map(([key, label]) => ({
+          label,
+          bills: fixedBills
+            .filter(b => (b.period ?? null) === key)
+            .sort(sortByDueDay),
+        }))
+        .filter(g => g.bills.length > 0);
+    } else {
+      // Agrupa por categoria × período
+      const groups: { label: string; bills: FixedBill[] }[] = [];
+      const periods: [string | null, string][] = [
+        ["1-15",  "1ª Quinzena"],
+        ["16-30", "2ª Quinzena"],
+        [null,    "Sem período"],
+      ];
+      periods.forEach(([key, periodLabel]) => {
+        const periodBills = fixedBills.filter(b => (b.period ?? null) === key);
+        const cats = Array.from(new Set(periodBills.map(b => b.category || "outros")));
+        cats.forEach(cat => {
+          const bills = periodBills
+            .filter(b => (b.category || "outros") === cat)
+            .sort(sortByDueDay);
+          if (bills.length > 0) {
+            const label = key
+              ? `${cat.charAt(0).toUpperCase() + cat.slice(1)} · ${periodLabel}`
+              : periodLabel;
+            groups.push({ label, bills });
+          }
+        });
       });
-    });
-    return groups;
+      return groups;
+    }
   })();
 
   return (
@@ -350,8 +373,33 @@ export default function LancamentosPage() {
       {/* ── CONTAS ── */}
       {tab === "contas" && (
         <div>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-slate-700 dark:text-slate-200 text-sm">Contas</h2>
+          <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
+            <div className="flex items-center gap-3">
+              <h2 className="font-semibold text-slate-700 dark:text-slate-200 text-sm">Contas</h2>
+              {/* Toggle: por quinzena / por categoria */}
+              <div className="flex bg-slate-100 dark:bg-slate-700/60 rounded-lg p-0.5 text-xs">
+                <button
+                  onClick={() => setBillGroupMode("quinzena")}
+                  className={`px-2.5 py-1 rounded-md font-medium transition-all ${
+                    billGroupMode === "quinzena"
+                      ? "bg-white dark:bg-slate-600 text-slate-700 dark:text-slate-100 shadow-sm"
+                      : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                  }`}
+                >
+                  Quinzena
+                </button>
+                <button
+                  onClick={() => setBillGroupMode("categoria")}
+                  className={`px-2.5 py-1 rounded-md font-medium transition-all ${
+                    billGroupMode === "categoria"
+                      ? "bg-white dark:bg-slate-600 text-slate-700 dark:text-slate-100 shadow-sm"
+                      : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                  }`}
+                >
+                  Categoria
+                </button>
+              </div>
+            </div>
             <div className="flex gap-2">
               <button
                 onClick={() => { setEditCat({}); setCatModal(true); }}
@@ -361,7 +409,7 @@ export default function LancamentosPage() {
                 <Plus size={14} /> Categoria
               </button>
               <button
-                onClick={() => { setEditBill({}); setBillTotalValue(""); setBillModal(true); }}
+                onClick={() => { setEditBill({}); setBillModal(true); }}
                 className="btn-primary flex items-center gap-1.5"
               >
                 <Plus size={14} /> Nova Conta
@@ -397,16 +445,25 @@ export default function LancamentosPage() {
                         <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
                           {formatCurrency(bill.amount)}
                         </span>
-                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                          bill.category === "essencial"
-                            ? "bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-400"
-                            : "bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400"
-                        }`}>
-                          {bill.category === "essencial" ? "Essencial" : "Outro"}
-                        </span>
+                        {(() => {
+                          const catObj = categories.find(c => c.name === bill.category);
+                          const color = catObj?.color;
+                          return (
+                            <span
+                              className="text-xs font-medium px-2 py-0.5 rounded-full"
+                              style={color
+                                ? { backgroundColor: `${color}22`, color }
+                                : { backgroundColor: "rgb(239 246 255)", color: "rgb(29 78 216)" }}
+                            >
+                              {bill.category
+                                ? bill.category.charAt(0).toUpperCase() + bill.category.slice(1)
+                                : "Outros"}
+                            </span>
+                          );
+                        })()}
                         <div className="flex gap-1">
                           <button
-                            onClick={() => { setEditBill(bill); setBillTotalValue(""); setBillModal(true); }}
+                            onClick={() => { setEditBill(bill); setBillModal(true); }}
                             className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg"
                           >
                             <Pencil size={13} className="text-slate-400 dark:text-slate-500" />
@@ -454,7 +511,7 @@ export default function LancamentosPage() {
                 <Plus size={14} /> Novo Cartão
               </button>
               <button
-                onClick={() => { setEditTx({ month, year }); setTxInstallmentValue(""); setTxModal(true); }}
+                onClick={() => { setEditTx({ month, year }); setTxModal(true); }}
                 className="btn-primary flex items-center gap-1.5"
               >
                 <Plus size={14} /> Lançar
@@ -464,8 +521,14 @@ export default function LancamentosPage() {
 
           <div className="space-y-4">
             {creditCards.map((card) => {
-              const txs = cardTxs.filter(t => t.card_id === card.id);
-              const total = txs.reduce((s, t) => s + Math.abs(t.amount), 0);
+              const isSortedByCat = txSortByCategory[card.id] ?? false;
+              const rawTxs = cardTxs.filter(t => t.card_id === card.id);
+              // Ordenação: por categoria (agrupado) ou por data (padrão)
+              const txs = isSortedByCat
+                ? [...rawTxs].sort((a, b) =>
+                    (a.category ?? "").localeCompare(b.category ?? ""))
+                : rawTxs;
+              const total = rawTxs.reduce((s, t) => s + Math.abs(t.amount), 0);
               return (
                 <div key={card.id} className="card transition-colors">
                   <div className="flex items-center justify-between mb-3">
@@ -476,31 +539,67 @@ export default function LancamentosPage() {
                         <p className="text-xs text-slate-400 dark:text-slate-500">{card.bank} · Vence dia {card.due_day} · {card.owner}</p>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{formatCurrency(total)}</p>
-                      <p className="text-xs text-slate-400 dark:text-slate-500">{txs.length} lançamento{txs.length !== 1 ? "s" : ""}</p>
+                    <div className="flex items-center gap-3">
+                      {rawTxs.length > 0 && (
+                        <div className="flex bg-slate-100 dark:bg-slate-700/60 rounded-lg p-0.5 text-xs">
+                          <button
+                            onClick={() => setTxSortByCategory(p => ({ ...p, [card.id]: false }))}
+                            className={`px-2 py-0.5 rounded-md font-medium transition-all ${
+                              !isSortedByCat
+                                ? "bg-white dark:bg-slate-600 text-slate-700 dark:text-slate-100 shadow-sm"
+                                : "text-slate-500 dark:text-slate-400"
+                            }`}
+                          >Data</button>
+                          <button
+                            onClick={() => setTxSortByCategory(p => ({ ...p, [card.id]: true }))}
+                            className={`px-2 py-0.5 rounded-md font-medium transition-all ${
+                              isSortedByCat
+                                ? "bg-white dark:bg-slate-600 text-slate-700 dark:text-slate-100 shadow-sm"
+                                : "text-slate-500 dark:text-slate-400"
+                            }`}
+                          >Categoria</button>
+                        </div>
+                      )}
+                      <div className="text-right">
+                        <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{formatCurrency(total)}</p>
+                        <p className="text-xs text-slate-400 dark:text-slate-500">{rawTxs.length} lançamento{rawTxs.length !== 1 ? "s" : ""}</p>
+                      </div>
                     </div>
                   </div>
 
                   {txs.length > 0 ? (
                     <div className="space-y-0">
-                      {txs.map((tx) => (
+                      {txs.map((tx) => {
+                        const catObj = categories.find(c => c.name === tx.category);
+                        return (
                         <div key={tx.id}
                           className="flex items-center justify-between py-2 border-b border-slate-50 dark:border-slate-700/30 last:border-0">
                           <div>
                             <p className="text-sm text-slate-700 dark:text-slate-200">{tx.description}</p>
-                            {tx.installment_total > 1 && (
-                            <p className="text-xs text-slate-400 dark:text-slate-500">
-                              {tx.installment_current}/{tx.installment_total}x
-                            </p>
-                          )}
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              {tx.installment_total > 1 && (
+                                <p className="text-xs text-slate-400 dark:text-slate-500">
+                                  {tx.installment_current}/{tx.installment_total}x
+                                </p>
+                              )}
+                              {tx.category && (
+                                <span
+                                  className="text-xs font-medium px-1.5 py-0.5 rounded-full"
+                                  style={catObj?.color
+                                    ? { backgroundColor: `${catObj.color}22`, color: catObj.color }
+                                    : { backgroundColor: "rgb(239 246 255)", color: "rgb(29 78 216)" }}
+                                >
+                                  {tx.category.charAt(0).toUpperCase() + tx.category.slice(1)}
+                                </span>
+                              )}
+                            </div>
                           </div>
                           <div className="flex items-center gap-2">
                             <span className="text-sm font-medium text-red-600">
                               -{formatCurrency(Math.abs(tx.amount))}
                             </span>
                             <button
-                              onClick={() => { setEditTx({ ...tx, amount: Math.abs(tx.amount) }); setTxInstallmentValue(""); setTxModal(true); }}
+                              onClick={() => { setEditTx({ ...tx, amount: Math.abs(tx.amount) }); setTxModal(true); }}
                               className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg"
                             >
                               <Pencil size={12} className="text-slate-400 dark:text-slate-500" />
@@ -513,7 +612,8 @@ export default function LancamentosPage() {
                             </button>
                           </div>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   ) : (
                     <p className="text-xs text-slate-400 dark:text-slate-500 py-2 text-center">
@@ -618,7 +718,7 @@ export default function LancamentosPage() {
       </Modal>
 
       {/* ── MODAL: Nova Conta ── */}
-      <Modal open={billModal} onClose={() => { setBillModal(false); setEditBill({}); setBillTotalValue(""); }}
+      <Modal open={billModal} onClose={() => { setBillModal(false); setEditBill({}); }}
         title={editBill.id ? "Editar Conta" : "Nova Conta"}>
         <div className="space-y-3">
           <div>
@@ -688,35 +788,6 @@ export default function LancamentosPage() {
             </div>
           </div>
 
-          {/* Calculadora: preenche valor da parcela a partir do total financiado */}
-          {(editBill.installment_total ?? 0) > 1 && (
-            <div className="bg-slate-50 dark:bg-slate-700/40 rounded-lg px-3 py-2.5">
-              <p className="text-xs text-slate-500 dark:text-slate-400 mb-1.5">
-                Calcular parcela do total financiado:
-              </p>
-              <div className="flex items-center gap-2">
-                <input
-                  className="input text-sm flex-1"
-                  type="number" step="0.01" placeholder="Valor total (ex: 50000)"
-                  value={billTotalValue}
-                  onChange={e => {
-                    const total = e.target.value === "" ? "" : Number(e.target.value);
-                    setBillTotalValue(total);
-                    if (total !== "" && total > 0 && editBill.installment_total) {
-                      setEditBill(p => ({ ...p, amount: parseFloat((total / editBill.installment_total!).toFixed(2)) }));
-                    }
-                  }}
-                />
-                <span className="text-xs text-slate-400 dark:text-slate-500 shrink-0">
-                  ÷ {editBill.installment_total}x
-                  {billTotalValue !== "" && Number(billTotalValue) > 0 && editBill.installment_total
-                    ? ` = ${new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(billTotalValue) / editBill.installment_total)}`
-                    : ""}
-                </span>
-              </div>
-            </div>
-          )}
-
           {/* Obs separado */}
           <div>
             <label className="label">Obs</label>
@@ -748,7 +819,7 @@ export default function LancamentosPage() {
           })()}
 
           <div className="flex gap-2 pt-2">
-            <button onClick={() => { setBillModal(false); setEditBill({}); setBillTotalValue(""); }}
+            <button onClick={() => { setBillModal(false); setEditBill({}); }}
               className="btn-secondary flex-1">Cancelar</button>
             <button onClick={saveBill} disabled={loading}
               className="btn-primary flex-1">Salvar</button>
@@ -841,7 +912,7 @@ export default function LancamentosPage() {
       </Modal>
 
       {/* ── MODAL: Lançamento Cartão ── */}
-      <Modal open={txModal} onClose={() => { setTxModal(false); setEditTx({}); setTxInstallmentValue(""); }}
+      <Modal open={txModal} onClose={() => { setTxModal(false); setEditTx({}); }}
         title={editTx.id ? "Editar Lançamento" : "Novo Lançamento no Cartão"}>
         <div className="space-y-3">
 
@@ -859,12 +930,24 @@ export default function LancamentosPage() {
             </div>
           )}
 
-          {/* Descrição */}
-          <div>
-            <label className="label">Descrição</label>
-            <input className="input" placeholder="Ex: Supermercado Assaí"
-              value={editTx.description ?? ""}
-              onChange={e => setEditTx(p => ({ ...p, description: e.target.value }))} />
+          {/* Descrição + Categoria */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="label">Descrição</label>
+              <input className="input" placeholder="Ex: Supermercado Assaí"
+                value={editTx.description ?? ""}
+                onChange={e => setEditTx(p => ({ ...p, description: e.target.value }))} />
+            </div>
+            <div>
+              <label className="label">Categoria</label>
+              <select className="input" value={editTx.category ?? ""}
+                onChange={e => setEditTx(p => ({ ...p, category: e.target.value || null }))}>
+                <option value="">Sem categoria</option>
+                {categories.map(c => (
+                  <option key={c.id} value={c.name}>{c.name}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
           {/* Valor + Parcelas */}
@@ -944,35 +1027,6 @@ export default function LancamentosPage() {
             );
           })()}
 
-          {/* Calculadora: calcular total a partir do valor por parcela */}
-          {!editTx.id && (editTx.installment_total ?? 1) > 1 && (
-            <div className="bg-slate-50 dark:bg-slate-700/40 rounded-lg px-3 py-2.5">
-              <p className="text-xs text-slate-500 dark:text-slate-400 mb-1.5">
-                Ou calcule do valor por parcela:
-              </p>
-              <div className="flex items-center gap-2">
-                <input
-                  className="input text-sm flex-1"
-                  type="number" step="0.01" placeholder="Ex: 1.000 (valor de cada parcela)"
-                  value={txInstallmentValue}
-                  onChange={e => {
-                    const parcela = e.target.value === "" ? "" : Number(e.target.value);
-                    setTxInstallmentValue(parcela);
-                    if (parcela !== "" && parcela > 0 && editTx.installment_total) {
-                      setEditTx(p => ({ ...p, amount: parseFloat((parcela * editTx.installment_total!).toFixed(2)) }));
-                    }
-                  }}
-                />
-                <span className="text-xs text-slate-400 dark:text-slate-500 shrink-0">
-                  × {editTx.installment_total}x
-                  {txInstallmentValue !== "" && Number(txInstallmentValue) > 0 && editTx.installment_total
-                    ? ` = ${new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(txInstallmentValue) * editTx.installment_total)}`
-                    : ""}
-                </span>
-              </div>
-            </div>
-          )}
-
           {/* Info de parcela no modo edição */}
           {editTx.id && (editTx.installment_total ?? 1) > 1 && (
             <p className="text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-700/50 rounded-lg px-3 py-2">
@@ -981,7 +1035,7 @@ export default function LancamentosPage() {
           )}
 
           <div className="flex gap-2 pt-2">
-            <button onClick={() => { setTxModal(false); setEditTx({}); setTxInstallmentValue(""); }}
+            <button onClick={() => { setTxModal(false); setEditTx({}); }}
               className="btn-secondary flex-1">Cancelar</button>
             <button onClick={saveTx} disabled={loading}
               className="btn-primary flex-1">Salvar</button>

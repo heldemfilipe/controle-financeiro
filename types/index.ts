@@ -75,6 +75,7 @@ export interface CardTransaction {
   installment_total: number;
   month: number;
   year: number;
+  category?: string | null;
   created_at: string;
   credit_cards?: CreditCard;
 }

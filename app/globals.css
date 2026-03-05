@@ -1,0 +1,140 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Fonte carregada via next/font/google no layout.tsx — sem @import aqui */
+
+/* ─── CSS Variables ──────────────────────────────────────────────────────── */
+:root {
+  --sidebar-width: 240px;
+  --bg-main:   #f1f5f9;
+  --bg-card:   #ffffff;
+  --bg-subtle: #f8fafc;
+  --bg-muted:  #f1f5f9;
+  --text-1:    #0f172a;
+  --text-2:    #334155;
+  --text-3:    #64748b;
+  --text-4:    #94a3b8;
+  --border-1:  #e2e8f0;
+  --border-2:  #f1f5f9;
+  --scrollbar: #cbd5e1;
+  --scrollbar-hover: #94a3b8;
+}
+
+html.dark {
+  color-scheme: dark;
+  --bg-main:   #0f172a;
+  --bg-card:   #1e293b;
+  --bg-subtle: #1e293b;
+  --bg-muted:  #0f172a;
+  --text-1:    #f1f5f9;
+  --text-2:    #cbd5e1;
+  --text-3:    #94a3b8;
+  --text-4:    #64748b;
+  --border-1:  #334155;
+  --border-2:  #1e293b;
+  --scrollbar: #334155;
+  --scrollbar-hover: #475569;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background-color: var(--bg-main);
+  color: var(--text-1);
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* ─── Scrollbar ──────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--bg-main); }
+::-webkit-scrollbar-thumb { background: var(--scrollbar); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-hover); }
+
+/* ─── Components ─────────────────────────────────────────────────────────── */
+@layer components {
+  .card {
+    @apply bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700/60 p-4 transition-colors;
+  }
+
+  .btn-primary {
+    @apply bg-primary-600 hover:bg-primary-700 text-white font-medium px-4 py-2 rounded-lg transition-colors text-sm;
+  }
+
+  .btn-secondary {
+    @apply bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600
+           text-slate-700 dark:text-slate-200 font-medium px-4 py-2 rounded-lg transition-colors text-sm;
+  }
+
+  .btn-danger {
+    @apply bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40
+           text-red-600 dark:text-red-400 font-medium px-4 py-2 rounded-lg transition-colors text-sm;
+  }
+
+  .input {
+    @apply w-full border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 text-sm
+           focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent
+           bg-white dark:bg-slate-700/80 text-slate-900 dark:text-slate-100
+           placeholder:text-slate-400 dark:placeholder:text-slate-500 transition-colors;
+  }
+
+  .label {
+    @apply block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1;
+  }
+
+  .badge-green {
+    @apply bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 text-xs font-medium px-2 py-0.5 rounded-full;
+  }
+  .badge-red {
+    @apply bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 text-xs font-medium px-2 py-0.5 rounded-full;
+  }
+  .badge-yellow {
+    @apply bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-xs font-medium px-2 py-0.5 rounded-full;
+  }
+  .badge-blue {
+    @apply bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-xs font-medium px-2 py-0.5 rounded-full;
+  }
+}
+
+/* ─── Dark mode: global structural overrides ─────────────────────────────── */
+
+/* Tables */
+html.dark table thead tr  { border-color: #334155; }
+html.dark table tbody tr  { border-color: #1e293b; }
+html.dark table tfoot tr  { background-color: #0f172a; border-color: #334155; }
+html.dark table tbody tr:hover { background-color: rgba(30,41,59,0.5); }
+html.dark table th,
+html.dark table td { color: #cbd5e1; }
+
+/* Recharts in dark mode */
+html.dark .recharts-text { fill: #64748b; }
+html.dark .recharts-cartesian-grid line { stroke: #1e293b; }
+
+/* Tooltip padrão do Recharts (fallback quando não usa CustomTooltip) */
+html.dark .recharts-tooltip-wrapper .recharts-default-tooltip {
+  background: #1e293b !important;
+  border-color: #334155 !important;
+  color: #f1f5f9;
+}
+
+/* Legenda do Recharts */
+html.dark .recharts-legend-item-text { color: #94a3b8 !important; }
+
+/* Polar grid (RadarChart) */
+html.dark .recharts-polar-grid-angle line { stroke: #334155; }
+html.dark .recharts-polar-grid-concentric path,
+html.dark .recharts-polar-grid-concentric circle { stroke: #334155; }
+html.dark .recharts-polar-angle-axis .recharts-text { fill: #64748b; }
+html.dark .recharts-polar-radius-axis .recharts-text { fill: #475569; }
+
+/* Select elements */
+html.dark select option {
+  background-color: #1e293b;
+  color: #f1f5f9;
+}
+
+/* Transition helpers */
+html.dark * {
+  border-color: inherit;
+}

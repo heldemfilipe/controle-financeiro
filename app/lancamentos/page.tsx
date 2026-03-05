@@ -50,6 +50,7 @@ export default function LancamentosPage() {
   const [editCat,    setEditCat]    = useState<Partial<Category>>({});
   const [loading, setLoading] = useState(false);
   const [billTotalValue, setBillTotalValue] = useState<number | "">("");
+  const [txInstallmentValue, setTxInstallmentValue] = useState<number | "">("");
 
   useEffect(() => { loadAll(); }, [month, year]);
 
@@ -200,7 +201,7 @@ export default function LancamentosPage() {
       await insertCardTransactions(parcelas);
     }
 
-    setTxModal(false); setEditTx({});
+    setTxModal(false); setEditTx({}); setTxInstallmentValue("");
     await loadAll(); setLoading(false);
   }
 
@@ -453,7 +454,7 @@ export default function LancamentosPage() {
                 <Plus size={14} /> Novo Cartão
               </button>
               <button
-                onClick={() => { setEditTx({ month, year }); setTxModal(true); }}
+                onClick={() => { setEditTx({ month, year }); setTxInstallmentValue(""); setTxModal(true); }}
                 className="btn-primary flex items-center gap-1.5"
               >
                 <Plus size={14} /> Lançar
@@ -499,7 +500,7 @@ export default function LancamentosPage() {
                               -{formatCurrency(Math.abs(tx.amount))}
                             </span>
                             <button
-                              onClick={() => { setEditTx({ ...tx, amount: Math.abs(tx.amount) }); setTxModal(true); }}
+                              onClick={() => { setEditTx({ ...tx, amount: Math.abs(tx.amount) }); setTxInstallmentValue(""); setTxModal(true); }}
                               className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg"
                             >
                               <Pencil size={12} className="text-slate-400 dark:text-slate-500" />
@@ -840,7 +841,7 @@ export default function LancamentosPage() {
       </Modal>
 
       {/* ── MODAL: Lançamento Cartão ── */}
-      <Modal open={txModal} onClose={() => { setTxModal(false); setEditTx({}); }}
+      <Modal open={txModal} onClose={() => { setTxModal(false); setEditTx({}); setTxInstallmentValue(""); }}
         title={editTx.id ? "Editar Lançamento" : "Novo Lançamento no Cartão"}>
         <div className="space-y-3">
 
@@ -943,6 +944,35 @@ export default function LancamentosPage() {
             );
           })()}
 
+          {/* Calculadora: calcular total a partir do valor por parcela */}
+          {!editTx.id && (editTx.installment_total ?? 1) > 1 && (
+            <div className="bg-slate-50 dark:bg-slate-700/40 rounded-lg px-3 py-2.5">
+              <p className="text-xs text-slate-500 dark:text-slate-400 mb-1.5">
+                Ou calcule do valor por parcela:
+              </p>
+              <div className="flex items-center gap-2">
+                <input
+                  className="input text-sm flex-1"
+                  type="number" step="0.01" placeholder="Ex: 1.000 (valor de cada parcela)"
+                  value={txInstallmentValue}
+                  onChange={e => {
+                    const parcela = e.target.value === "" ? "" : Number(e.target.value);
+                    setTxInstallmentValue(parcela);
+                    if (parcela !== "" && parcela > 0 && editTx.installment_total) {
+                      setEditTx(p => ({ ...p, amount: parseFloat((parcela * editTx.installment_total!).toFixed(2)) }));
+                    }
+                  }}
+                />
+                <span className="text-xs text-slate-400 dark:text-slate-500 shrink-0">
+                  × {editTx.installment_total}x
+                  {txInstallmentValue !== "" && Number(txInstallmentValue) > 0 && editTx.installment_total
+                    ? ` = ${new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(txInstallmentValue) * editTx.installment_total)}`
+                    : ""}
+                </span>
+              </div>
+            </div>
+          )}
+
           {/* Info de parcela no modo edição */}
           {editTx.id && (editTx.installment_total ?? 1) > 1 && (
             <p className="text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-700/50 rounded-lg px-3 py-2">
@@ -951,7 +981,7 @@ export default function LancamentosPage() {
           )}
 
           <div className="flex gap-2 pt-2">
-            <button onClick={() => { setTxModal(false); setEditTx({}); }}
+            <button onClick={() => { setTxModal(false); setEditTx({}); setTxInstallmentValue(""); }}
               className="btn-secondary flex-1">Cancelar</button>
             <button onClick={saveTx} disabled={loading}
               className="btn-primary flex-1">Salvar</button>

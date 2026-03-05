@@ -12,7 +12,8 @@ import {
   getMonthlyBillPayments, getMonthlyIncomes, getIncomeSources,
   getCardTotalsByMonth,
 } from "@/lib/queries";
-import { formatCurrency, getCurrentMonth, getMonthName, sumTransactions, filterRegularBills } from "@/lib/utils";
+import type { MonthlyBillPayment } from "@/types";
+import { formatCurrency, getCurrentMonth, getMonthName, sumTransactions, filterRegularBills, getAccConfig, computeInstallment } from "@/lib/utils";
 import { MONTH_SHORT } from "@/types";
 import type { Category, FixedBill } from "@/types";
 import { ChartTooltip } from "@/components/ui/ChartTooltip";
@@ -41,6 +42,7 @@ export default function AnalisePage() {
   const [cardTotal,     setCardTotal]     = useState(0);
   const [incomeTotal,   setIncomeTotal]   = useState(0);
   const [annualCardTotals, setAnnualCardTotals] = useState<Record<number, number>>({});
+  const [prevBalance,   setPrevBalance]   = useState(0);
 
   useEffect(() => { loadData(); }, [month, year]);
 
@@ -78,6 +80,54 @@ export default function AnalisePage() {
       setIncomeTotal(inc);
 
       setAnnualCardTotals(annualCards);
+
+      // ── Saldo acumulado: usa mesma lógica de accConfig que gastos-mensais ──
+      const cfg = getAccConfig();
+      const regularBills = filterRegularBills(bills);
+      const baseRecurring = sources.filter(s => s.is_recurring !== false).reduce((s, src) => s + src.base_amount, 0);
+
+      let monthsToLoad: number[];
+      if (year === cfg.startYear) {
+        monthsToLoad = month > cfg.startMonth
+          ? Array.from({ length: month - cfg.startMonth }, (_, i) => cfg.startMonth + i)
+          : [];
+      } else if (year > cfg.startYear) {
+        monthsToLoad = month > 1 ? Array.from({ length: month - 1 }, (_, i) => i + 1) : [];
+      } else {
+        monthsToLoad = [];
+      }
+
+      if (monthsToLoad.length === 0) {
+        setPrevBalance(cfg.saldoInicial);
+      } else {
+        const pastBalances = await Promise.all(
+          monthsToLoad.map(async (m) => {
+            const [incPast, billsPast, txsPast] = await Promise.all([
+              getMonthlyIncomes(m, year),
+              getMonthlyBillPayments(m, year),
+              getCardTransactions(m, year),
+            ]);
+            const incPastTotal = incPast.length > 0
+              ? incPast.reduce((s, i) => s + i.amount, 0)
+              : baseRecurring;
+            const activeBills = regularBills.filter(bill => {
+              if (!bill.installment_total) return true;
+              if (bill.installment_start_month == null || bill.installment_start_year == null) return true;
+              return computeInstallment(bill, m, year) !== null;
+            });
+            const billIdsPast = billsPast.map((b: MonthlyBillPayment) => b.bill_id);
+            const missing = activeBills.filter(b => !billIdsPast.includes(b.id));
+            const billsTotal = [
+              ...billsPast.filter((b: MonthlyBillPayment) => activeBills.some(ab => ab.id === b.bill_id))
+                .map((b: MonthlyBillPayment) => b.amount ?? activeBills.find(ab => ab.id === b.bill_id)?.amount ?? 0),
+              ...missing.map(b => b.amount),
+            ].reduce((s, v) => s + v, 0);
+            const cardsPast = sumTransactions(txsPast);
+            return incPastTotal - billsTotal - cardsPast;
+          })
+        );
+        setPrevBalance(cfg.saldoInicial + pastBalances.reduce((s, v) => s + v, 0));
+      }
     } finally {
       setLoading(false);
     }
@@ -154,16 +204,25 @@ export default function AnalisePage() {
                 {totalExpenses > 0 ? `${((cardTotal / totalExpenses) * 100).toFixed(0)}% dos gastos` : "—"}
               </p>
             </div>
-            <div className={`rounded-xl p-3.5 border transition-colors ${
-              incomeTotal - totalExpenses >= 0
-                ? "bg-emerald-50 dark:bg-emerald-900/20 border-emerald-100 dark:border-emerald-800/30"
-                : "bg-red-50 dark:bg-red-900/20 border-red-100 dark:border-red-800/30"
-            }`}>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Saldo</p>
-              <p className={`text-lg font-bold ${incomeTotal - totalExpenses >= 0 ? "text-emerald-600" : "text-red-600"}`}>
-                {formatCurrency(incomeTotal - totalExpenses)}
-              </p>
-            </div>
+            {(() => {
+              const monthBalance = incomeTotal - totalExpenses;
+              const accBalance = prevBalance + monthBalance;
+              return (
+                <div className={`rounded-xl p-3.5 border transition-colors ${
+                  accBalance >= 0
+                    ? "bg-emerald-50 dark:bg-emerald-900/20 border-emerald-100 dark:border-emerald-800/30"
+                    : "bg-red-50 dark:bg-red-900/20 border-red-100 dark:border-red-800/30"
+                }`}>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Saldo Acumulado</p>
+                  <p className={`text-lg font-bold ${accBalance >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+                    {accBalance >= 0 ? "+" : ""}{formatCurrency(accBalance)}
+                  </p>
+                  <p className="text-xs text-slate-400 dark:text-slate-500">
+                    Mês: {monthBalance >= 0 ? "+" : ""}{formatCurrency(monthBalance)}
+                  </p>
+                </div>
+              );
+            })()}
           </div>
 
           {/* ── Linha superior: Pizza + Lista de categorias ────────────────── */}

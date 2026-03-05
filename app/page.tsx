@@ -159,17 +159,26 @@ export default function DashboardPage() {
         });
         const billIds2 = billPay.map(b => b.bill_id);
         const missing2 = visible2.filter(b => !billIds2.includes(b.id));
-        const regularTotal2 = [
-          ...billPay.filter(b => visible2.some(vb => vb.id === b.bill_id)).map(b => b.amount ?? b.fixed_bills?.amount ?? 0),
-          ...missing2.map(b => b.amount),
-        ].reduce((s, v) => s + v, 0);
 
         // Dízimo anual: usa pagamento se existir, senão 10% da renda do mês
         const tithePay2 = titheBillItem ? billPay.find(b => b.bill_id === titheBillItem.id) : null;
         const titheAmt2 = tithePay2?.amount ?? (titheBillItem ? income2 * 0.1 : 0);
+        const titheCategory2 = titheBillItem?.category ?? "essencial";
 
+        // Agrupa despesas por categoria para o gráfico empilhado
+        const billsWithCats2 = [
+          ...billPay
+            .filter(b => visible2.some(vb => vb.id === b.bill_id))
+            .map(b => ({ amount: b.amount ?? b.fixed_bills?.amount ?? 0, category: b.fixed_bills?.category ?? "outros" })),
+          ...missing2.map(b => ({ amount: b.amount, category: b.category })),
+        ];
+        const essenciais2 = billsWithCats2.filter(b => b.category === "essencial").reduce((s, b) => s + b.amount, 0)
+          + (titheCategory2 === "essencial" ? titheAmt2 : 0);
+        const outros2 = billsWithCats2.filter(b => b.category !== "essencial").reduce((s, b) => s + b.amount, 0)
+          + (titheCategory2 !== "essencial" ? titheAmt2 : 0);
         const cards2 = txs2.reduce((s, t) => s + Math.abs(t.amount), 0);
-        return { name: MONTH_SHORT[i], receitas: income2, despesas: regularTotal2 + titheAmt2 + cards2 };
+        const despesas2 = essenciais2 + outros2 + cards2;
+        return { name: MONTH_SHORT[i], receitas: income2, essenciais: essenciais2, outros: outros2, cartoes: cards2, despesas: despesas2 };
       });
       const yd = await Promise.all(yearlyPromises);
 
@@ -267,16 +276,18 @@ export default function DashboardPage() {
               <Tooltip content={<ChartTooltip />} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               <ReferenceLine yAxisId="right" y={0} stroke="#94a3b8" strokeDasharray="4 4" />
-              <Bar yAxisId="left" dataKey="receitas" name="Receitas" fill="#10b981" radius={[4, 4, 0, 0]} />
-              <Bar yAxisId="left" dataKey="despesas" name="Despesas" fill="#ef4444" radius={[4, 4, 0, 0]} />
+              <Bar yAxisId="left" dataKey="receitas" name="Receitas" fill="#10b981" stackId="r" radius={[4, 4, 0, 0]} />
+              <Bar yAxisId="left" dataKey="essenciais" name="Essenciais" fill="#6366f1" stackId="d" radius={[0, 0, 0, 0]} />
+              <Bar yAxisId="left" dataKey="outros" name="Outros" fill="#f59e0b" stackId="d" radius={[0, 0, 0, 0]} />
+              <Bar yAxisId="left" dataKey="cartoes" name="Cartões" fill="#ef4444" stackId="d" radius={[4, 4, 0, 0]} />
               <Line
                 yAxisId="right"
                 type="monotone"
                 dataKey="saldoAcumulado"
                 name="Saldo Acumulado"
-                stroke="#6366f1"
+                stroke="#8b5cf6"
                 strokeWidth={2}
-                dot={{ fill: "#6366f1", r: 3 }}
+                dot={{ fill: "#8b5cf6", r: 3 }}
                 activeDot={{ r: 5 }}
                 connectNulls
               />

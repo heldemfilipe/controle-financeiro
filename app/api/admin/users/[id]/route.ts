@@ -31,9 +31,13 @@ export async function PATCH(
 
   const { id } = await params;
   const body = await request.json();
-  const { display_name, role, banned } = body;
+  const { display_name, role, banned, password } = body;
 
   const updatePayload: Record<string, unknown> = {};
+
+  if (password !== undefined) {
+    updatePayload.password = password;
+  }
 
   if (display_name !== undefined || role !== undefined) {
     const currentUser = await supabaseAdmin.auth.admin.getUserById(id);

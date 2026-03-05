@@ -51,6 +51,9 @@ export default function ConfiguracoesPage() {
   const [editingUser, setEditingUser] = useState<AppUser | null>(null);
   const [editUserData, setEditUserData] = useState({ display_name: "", role: "user" as "admin" | "user" });
   const [showNewPassword, setShowNewPassword] = useState(false);
+  const [changePasswordUser, setChangePasswordUser] = useState<AppUser | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [showChangePassword, setShowChangePassword] = useState(false);
   const [userFeedback, setUserFeedback] = useState("");
 
   useEffect(() => {
@@ -187,6 +190,25 @@ export default function ConfiguracoesPage() {
     setResetConfirm(null);
     if (res.ok) showFeedback("E-mail de redefinição enviado!");
     else showFeedback("Erro ao enviar e-mail");
+  }
+
+  async function changePassword() {
+    if (!changePasswordUser || !newPassword) return;
+    setLoading(true);
+    const res = await fetch(`/api/admin/users/${changePasswordUser.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: newPassword }),
+    });
+    if (res.ok) {
+      setChangePasswordUser(null);
+      setNewPassword("");
+      showFeedback("Senha alterada com sucesso!");
+    } else {
+      const err = await res.json();
+      showFeedback(err.error ?? "Erro ao alterar senha");
+    }
+    setLoading(false);
   }
 
   function showFeedback(msg: string) {
@@ -601,8 +623,14 @@ export default function ConfiguracoesPage() {
                         <Pencil size={14} className="text-slate-400 dark:text-slate-500" />
                       </button>
                       <button
+                        onClick={() => { setChangePasswordUser(u); setNewPassword(""); setShowChangePassword(false); }}
+                        title="Definir nova senha"
+                        className="p-2 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors">
+                        <Lock size={14} className="text-primary-500" />
+                      </button>
+                      <button
                         onClick={() => setResetConfirm(u)}
-                        title="Redefinir senha"
+                        title="Enviar e-mail de reset"
                         className="p-2 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-lg transition-colors">
                         <RotateCcw size={14} className="text-amber-500" />
                       </button>
@@ -919,6 +947,40 @@ export default function ConfiguracoesPage() {
             <button onClick={() => { setEditUserModal(false); setEditingUser(null); }} className="btn-secondary flex-1">Cancelar</button>
             <button onClick={updateUser} disabled={loading} className="btn-primary flex-1 flex items-center justify-center gap-2">
               <Save size={14} /> Salvar
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* ── MODAL: Alterar Senha ── */}
+      <Modal open={!!changePasswordUser} onClose={() => { setChangePasswordUser(null); setNewPassword(""); }} title="Definir Nova Senha" size="sm">
+        <div className="space-y-4">
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            Usuário: <span className="font-medium text-slate-700 dark:text-slate-300">{changePasswordUser?.email}</span>
+          </p>
+          <div>
+            <label className="label">Nova Senha</label>
+            <div className="relative">
+              <input
+                className="input pr-10"
+                type={showChangePassword ? "text" : "password"}
+                placeholder="Mínimo 6 caracteres"
+                value={newPassword}
+                onChange={e => setNewPassword(e.target.value)}
+                autoFocus
+              />
+              <button type="button" tabIndex={-1}
+                onClick={() => setShowChangePassword(v => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors">
+                {showChangePassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={() => { setChangePasswordUser(null); setNewPassword(""); }} className="btn-secondary flex-1">Cancelar</button>
+            <button onClick={changePassword} disabled={loading || newPassword.length < 6}
+              className="btn-primary flex-1 flex items-center justify-center gap-2">
+              <Lock size={14} /> Salvar Senha
             </button>
           </div>
         </div>

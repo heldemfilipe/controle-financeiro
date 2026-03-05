@@ -56,10 +56,14 @@ export default function GastosAnuaisPage() {
             getCardTransactions(month, year),
           ]);
 
-          // Receitas — avulsas só entram se tiverem registro mensal
+          // Receitas — recorrentes usam fallback base_amount; avulsas só do mês correto
           const receitas = sources.reduce((s, src) => {
-            const mi = incomes.find(m => m.source_id === src.id);
-            if (src.is_recurring === false) return mi ? s + mi.amount : s;
+            const mi = incomes.find(i => i.source_id === src.id);
+            if (src.is_recurring === false) {
+              // Inclui apenas se for avulsa deste mês/ano específico
+              if (src.one_time_month !== month || src.one_time_year !== year) return s;
+              return s + (mi?.amount ?? src.base_amount);
+            }
             return s + (mi?.amount ?? src.base_amount);
           }, 0);
 

@@ -60,18 +60,18 @@ export default function DashboardPage() {
         getFixedBills(),
         getCreditCards(),
         getMonthlyCardPayments(month, year),
-        getIncomeSources(month, year),
+        getIncomeSources(), // todas as fontes — filtragem por avulsa feita inline
       ]);
 
-      // Base recorrente: usado como fallback no gráfico anual (fontes que não têm registros)
-      const baseRecurringIncome = incomeSrcs
-        .filter(s => s.is_recurring !== false)
-        .reduce((s, src) => s + src.base_amount, 0);
+      // incomeSrcs = todas as fontes ativas (sem filtro de mês);
+      // a filtragem por avulsa do mês é feita inline abaixo
 
-      // Receita do mês: por fonte — usa registro mensal se existir, senão valor base
-      // incomeSrcs já está filtrado para o mês/ano (inclui avulsas deste mês)
+      // Receita do mês: recorrentes sempre + avulsas só deste mês/ano, com fallback base_amount
       const inc = incomeSrcs.reduce((s, src) => {
         const mi = incomes.find(i => i.source_id === src.id);
+        if (src.is_recurring === false) {
+          if (src.one_time_month !== month || src.one_time_year !== year) return s;
+        }
         return s + (mi?.amount ?? src.base_amount);
       }, 0);
 
@@ -147,9 +147,14 @@ export default function DashboardPage() {
           getMonthlyBillPayments(m, year),
           getCardTransactions(m, year),
         ]);
-        const income2 = inc2.length > 0
-          ? inc2.reduce((s, i) => s + i.amount, 0)
-          : baseRecurringIncome;
+        // Per-source: recorrentes sempre + avulsas só do mês m, com fallback base_amount
+        const income2 = incomeSrcs.reduce((s, src) => {
+          const mi = inc2.find(i => i.source_id === src.id);
+          if (src.is_recurring === false) {
+            if (src.one_time_month !== m || src.one_time_year !== year) return s;
+          }
+          return s + (mi?.amount ?? src.base_amount);
+        }, 0);
 
         // Filtra installments ativos para o mês m
         const visible2 = regularAllBills.filter(bill => {

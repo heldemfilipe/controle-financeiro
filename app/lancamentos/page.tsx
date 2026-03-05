@@ -223,13 +223,19 @@ export default function LancamentosPage() {
     total: cardTxs.filter(t => t.card_id === card.id).reduce((s, t) => s + Math.abs(t.amount), 0),
   })).filter(c => c.txs.length > 0 || true);
 
+  // Filtra contas fora do range ativo de parcelas para o mês selecionado
+  const visibleBills = fixedBills.filter(bill => {
+    if (!bill.installment_total) return true;
+    if (bill.installment_start_month == null || bill.installment_start_year == null) return true;
+    return computeInstallment(bill, month, year) !== null;
+  });
+
   // Agrupamento: por quinzena (padrão) ou por categoria
   const billsByGroup = (() => {
     const sortByDueDay = (a: FixedBill, b: FixedBill) =>
       (a.due_day ?? 99) - (b.due_day ?? 99);
 
     if (billGroupMode === "quinzena") {
-      // Agrupa por período, items ordenados por dia de vencimento
       const periods: [string | null, string][] = [
         ["1-15",  "1ª Quinzena"],
         ["16-30", "2ª Quinzena"],
@@ -238,7 +244,7 @@ export default function LancamentosPage() {
       return periods
         .map(([key, label]) => ({
           label,
-          bills: fixedBills
+          bills: visibleBills
             .filter(b => (b.period ?? null) === key)
             .sort(sortByDueDay),
         }))
@@ -252,7 +258,7 @@ export default function LancamentosPage() {
         [null,    "Sem período"],
       ];
       periods.forEach(([key, periodLabel]) => {
-        const periodBills = fixedBills.filter(b => (b.period ?? null) === key);
+        const periodBills = visibleBills.filter(b => (b.period ?? null) === key);
         const cats = Array.from(new Set(periodBills.map(b => b.category || "outros")));
         cats.forEach(cat => {
           const bills = periodBills
@@ -492,7 +498,7 @@ export default function LancamentosPage() {
           <div className="mt-3 bg-primary-50 dark:bg-primary-900/20 border border-primary-100 dark:border-primary-800/30 rounded-xl p-3 flex justify-between items-center transition-colors">
             <span className="text-sm font-medium text-primary-700 dark:text-primary-400">Total Contas</span>
             <span className="text-lg font-bold text-primary-700 dark:text-primary-400">
-              {formatCurrency(fixedBills.reduce((s, b) => s + b.amount, 0))}
+              {formatCurrency(visibleBills.reduce((s, b) => s + b.amount, 0))}
             </span>
           </div>
         </div>

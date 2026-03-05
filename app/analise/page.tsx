@@ -135,9 +135,16 @@ export default function AnalisePage() {
 
   // ─── Dados para o gráfico de pizza mensal ────────────────────────────────────
 
-  // Agrupa contas por categoria
+  // Filtra contas fora do range de parcelas ativo para o mês atual
+  const visibleFixedBills = fixedBills.filter(b => {
+    if (!b.installment_total) return true;
+    if (b.installment_start_month == null || b.installment_start_year == null) return true;
+    return computeInstallment(b, month, year) !== null;
+  });
+
+  // Agrupa contas por categoria (apenas contas ativas no mês)
   const categoryMap: Record<string, number> = {};
-  fixedBills.forEach(b => {
+  visibleFixedBills.forEach(b => {
     const cat = b.category || "outros";
     categoryMap[cat] = (categoryMap[cat] ?? 0) + (monthlyBillAmt[b.id] ?? b.amount);
   });
@@ -164,7 +171,12 @@ export default function AnalisePage() {
     const row: Record<string, number | string> = { mes: label };
     catNames.forEach(cat => {
       row[cat] = fixedBills
-        .filter(b => (b.category || "outros") === cat)
+        .filter(b => {
+          if ((b.category || "outros") !== cat) return false;
+          if (!b.installment_total) return true;
+          if (b.installment_start_month == null || b.installment_start_year == null) return true;
+          return computeInstallment(b, m, year) !== null;
+        })
         .reduce((s, b) => s + b.amount, 0);
     });
     row["Cartões"] = annualCardTotals[m] ?? 0;

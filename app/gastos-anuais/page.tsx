@@ -18,7 +18,7 @@ import {
   getMonthlyIncomes, getMonthlyBillPayments,
   getCardTransactions, getFixedBills, getIncomeSources,
 } from "@/lib/queries";
-import { formatCurrency, getMonthName } from "@/lib/utils";
+import { formatCurrency, getMonthName, computeInstallment } from "@/lib/utils";
 import { MONTH_SHORT } from "@/types";
 
 interface MonthData {
@@ -67,9 +67,14 @@ export default function GastosAnuaisPage() {
             return s + (mi?.amount ?? src.base_amount);
           }, 0);
 
-          // Contas por categoria
+          // Contas por categoria — exclui parcelas fora do range ativo
           const paidBillIds = billPays.map(b => b.bill_id);
-          const missingBills = allBills.filter(b => !paidBillIds.includes(b.id));
+          const missingBills = allBills.filter(b => {
+            if (paidBillIds.includes(b.id)) return false;
+            if (!b.installment_total) return true;
+            if (b.installment_start_month == null || b.installment_start_year == null) return true;
+            return computeInstallment(b, month, year) !== null;
+          });
           const allMonthBills = [
             ...billPays.map(b => ({
               amount: b.amount ?? b.fixed_bills?.amount ?? 0,

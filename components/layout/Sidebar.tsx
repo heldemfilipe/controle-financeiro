@@ -1,14 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import {
   LayoutDashboard, PlusCircle, CalendarDays, CreditCard,
   TrendingUp, DollarSign, BarChart2, AreaChart, Settings,
-  Sun, Moon, PieChart,
+  Sun, Moon, PieChart, LogOut, User,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/components/providers/ThemeProvider";
+import { createSupabaseBrowser } from "@/lib/supabase-browser";
 
 const navGroups = [
   {
@@ -43,7 +45,23 @@ const navGroups = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const { theme, toggle } = useTheme();
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+
+  useEffect(() => {
+    const supabase = createSupabaseBrowser();
+    supabase.auth.getUser().then(({ data }) => {
+      setUserEmail(data.user?.email ?? null);
+    });
+  }, []);
+
+  async function handleLogout() {
+    const supabase = createSupabaseBrowser();
+    await supabase.auth.signOut();
+    router.push("/login");
+    router.refresh();
+  }
 
   return (
     <aside className="fixed top-0 left-0 h-full w-[240px] bg-slate-900 text-white flex flex-col z-50">
@@ -61,19 +79,28 @@ export function Sidebar() {
       </div>
 
       {/* User info */}
-      <div className="px-5 py-3 border-b border-slate-700/50">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 bg-gradient-to-br from-primary-400 to-primary-600 rounded-full flex items-center justify-center">
-            <DollarSign size={13} className="text-white" />
+      <div className="px-4 py-3 border-b border-slate-700/50">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-7 h-7 bg-gradient-to-br from-primary-400 to-primary-600 rounded-full flex items-center justify-center shrink-0">
+              <User size={13} className="text-white" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-medium text-slate-200 truncate">
+                {process.env.NEXT_PUBLIC_APP_NAME ?? "Minha Família"}
+              </p>
+              <p className="text-xs text-slate-500 truncate">
+                {userEmail ?? "…"}
+              </p>
+            </div>
           </div>
-          <div>
-            <p className="text-xs font-medium text-slate-200">
-              {process.env.NEXT_PUBLIC_APP_NAME ?? "Minha Família"}
-            </p>
-            <p className="text-xs text-slate-500">
-              {process.env.NEXT_PUBLIC_APP_YEAR ?? new Date().getFullYear()}
-            </p>
-          </div>
+          <button
+            onClick={handleLogout}
+            title="Sair"
+            className="shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-400/10 transition-colors"
+          >
+            <LogOut size={14} />
+          </button>
         </div>
       </div>
 

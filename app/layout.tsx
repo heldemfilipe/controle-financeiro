@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import { Sidebar } from "@/components/layout/Sidebar";
+import { LayoutShell } from "@/components/layout/LayoutShell";
 import { ThemeProvider } from "@/components/providers/ThemeProvider";
 
 const inter = Inter({ subsets: ["latin"], display: "swap" });
@@ -24,12 +24,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className={inter.className}>
         <ThemeProvider>
-          <div className="flex min-h-screen bg-slate-100 dark:bg-slate-900 transition-colors duration-200">
-            <Sidebar />
-            <main className="flex-1 ml-[240px] min-h-screen">
-              {children}
-            </main>
-          </div>
+          <LayoutShell>{children}</LayoutShell>
         </ThemeProvider>
       </body>
     </html>

@@ -1,6 +1,15 @@
 /** Identificador livre do "dono" do recurso (ex: "pessoa1", "joao", "casal"). */
 export type Owner = string;
 export type IncomeType = "salary" | "extra" | "other";
+
+export interface AppUser {
+  id: string;
+  email: string;
+  display_name: string;
+  role: "admin" | "user";
+  banned: boolean;
+  created_at: string;
+}
 export type BillPeriod = "1-15" | "16-30";
 
 export interface Category {

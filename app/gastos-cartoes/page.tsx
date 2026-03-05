@@ -102,7 +102,7 @@ export default function GastosCataoesPage() {
     .map(([name, stats]) => ({ name, ...stats }));
 
   return (
-    <div className="p-6 min-h-screen">
+    <div className="p-4 md:p-6 min-h-screen">
       <PageHeader title="Gastos nos Cartões" subtitle="Análise detalhada das faturas">
         <div className="flex items-center gap-2">
           {/* View Mode Toggle */}
@@ -149,7 +149,7 @@ export default function GastosCataoesPage() {
       </PageHeader>
 
       {/* Summary KPIs */}
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 md:gap-4 mb-6">
         <div className="bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800/30 rounded-xl p-4 transition-colors">
           <div className="flex justify-between items-start">
             <div>
@@ -219,7 +219,7 @@ export default function GastosCataoesPage() {
       </div>
 
       {/* Charts Row */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 mb-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
         {/* Bar Chart por cartão */}
         <div className="xl:col-span-2 card">
           <h3 className="font-semibold text-slate-700 dark:text-slate-200 text-sm mb-4">
@@ -315,7 +315,7 @@ export default function GastosCataoesPage() {
       </div>
 
       {/* Bottom Row */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Top Transactions */}
         <div className="card">
           <h3 className="font-semibold text-slate-700 dark:text-slate-200 text-sm mb-3 flex items-center gap-2">

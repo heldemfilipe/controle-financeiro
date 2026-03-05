@@ -489,7 +489,7 @@ export default function GastosMensaisPage() {
           </span>
         </div>
 
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* Contas */}
           <div className="space-y-3">
             <h3 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide flex items-center gap-1.5">
@@ -638,14 +638,14 @@ export default function GastosMensaisPage() {
   // ── Render principal ───────────────────────────────────────────────────────
 
   return (
-    <div className="p-6 min-h-screen">
+    <div className="p-4 md:p-6 min-h-screen">
       <PageHeader title="Gastos Mensais" subtitle="Controle de pagamentos por quinzena">
         <MonthSelector month={month} year={year}
           onChange={(m, y) => { setMonth(m); setYear(y); }} />
       </PageHeader>
 
       {/* Barra de resumo */}
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 mb-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 mb-3">
         <div className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/50 rounded-xl p-3.5 transition-colors">
           <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Receitas</p>
           <p className="text-lg font-bold text-emerald-600">+{formatCurrency(incomeTotal)}</p>

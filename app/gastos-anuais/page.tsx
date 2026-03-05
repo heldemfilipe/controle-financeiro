@@ -134,7 +134,7 @@ export default function GastosAnuaisPage() {
   }));
 
   return (
-    <div className="p-6 min-h-screen">
+    <div className="p-4 md:p-6 min-h-screen">
       <PageHeader title="Gastos Anuais" subtitle="Visão completa do ano">
         {/* Year Selector */}
         <div className="flex items-center gap-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl px-1 py-1 transition-colors">
@@ -151,7 +151,7 @@ export default function GastosAnuaisPage() {
       </PageHeader>
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 md:gap-4 mb-6">
         <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800/30 rounded-xl p-4 transition-colors">
           <div className="flex justify-between items-start">
             <div>
@@ -218,7 +218,7 @@ export default function GastosAnuaisPage() {
       </div>
 
       {/* Best/Worst highlights */}
-      <div className="grid grid-cols-2 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 md:gap-4 mb-6">
         {melhorMes && (
           <div className="bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-xl p-4 text-white">
             <div className="flex items-center gap-2 mb-1">
@@ -250,7 +250,7 @@ export default function GastosAnuaisPage() {
       </div>
 
       {/* Charts Row 1 */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
         {/* Stacked Bar Chart */}
         <div className="card transition-colors">
           <h3 className="font-semibold text-slate-700 dark:text-slate-200 text-sm mb-4 flex items-center gap-2">
@@ -326,7 +326,7 @@ export default function GastosAnuaisPage() {
       </div>
 
       {/* Charts Row 3 — RadarChart + Taxa de Poupança */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
         {/* Radar — Perfil de gastos 1º semestre */}
         <div className="card transition-colors">
           <h3 className="font-semibold text-slate-700 dark:text-slate-200 text-sm mb-1 flex items-center gap-2">

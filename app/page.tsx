@@ -199,7 +199,7 @@ export default function DashboardPage() {
   const totalExpenses = totalBills + totalCards;
 
   return (
-    <div className="p-6 min-h-screen">
+    <div className="p-4 md:p-6 min-h-screen">
       <PageHeader
         title="Dashboard"
         subtitle={`Visão geral de ${getMonthName(month)} ${year}`}
@@ -212,7 +212,7 @@ export default function DashboardPage() {
       </PageHeader>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 md:gap-4 mb-6">
         <SummaryCard
           title="Receitas"
           value={totalIncome}
@@ -248,7 +248,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Charts Row */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
         {/* Bar Chart - 12 months */}
         <div className="xl:col-span-2 card transition-colors">
           <h3 className="font-semibold text-slate-700 dark:text-slate-200 mb-4 text-sm">
@@ -316,7 +316,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Bottom Row */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Cards Summary */}
         <div className="card transition-colors">
           <h3 className="font-semibold text-slate-700 dark:text-slate-200 mb-3 text-sm flex items-center gap-2">

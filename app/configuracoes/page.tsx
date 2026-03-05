@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import {
   TrendingUp, CreditCard, FileText, Plus, Pencil, Trash2,
-  Save, AlertCircle, Check, User, Banknote,
+  Save, AlertCircle, Check, User, Banknote, Users,
+  ShieldCheck, ShieldX, RotateCcw, Eye, EyeOff, Lock,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Modal } from "@/components/ui/Modal";
@@ -14,9 +15,10 @@ import {
   getFixedBills, upsertFixedBill, deleteFixedBill,
 } from "@/lib/queries";
 import { formatCurrency } from "@/lib/utils";
-import type { IncomeSource, CreditCard as CreditCardType, FixedBill } from "@/types";
+import { createSupabaseBrowser } from "@/lib/supabase-browser";
+import type { IncomeSource, CreditCard as CreditCardType, FixedBill, AppUser } from "@/types";
 
-type Tab = "renda" | "cartoes" | "contas";
+type Tab = "renda" | "cartoes" | "contas" | "usuarios";
 
 export default function ConfiguracoesPage() {
   const [tab, setTab] = useState<Tab>("renda");
@@ -37,7 +39,32 @@ export default function ConfiguracoesPage() {
 
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: string; id: string; name: string } | null>(null);
 
-  useEffect(() => { loadAll(); }, []);
+  // ── Users (admin only) ──────────────────────────────────────────────────────
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [users, setUsers] = useState<AppUser[]>([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [userModal, setUserModal] = useState(false);
+  const [editUserModal, setEditUserModal] = useState(false);
+  const [resetConfirm, setResetConfirm] = useState<AppUser | null>(null);
+  const [banConfirm, setBanConfirm] = useState<AppUser | null>(null);
+  const [newUser, setNewUser] = useState({ email: "", password: "", display_name: "", role: "user" as "admin" | "user" });
+  const [editingUser, setEditingUser] = useState<AppUser | null>(null);
+  const [editUserData, setEditUserData] = useState({ display_name: "", role: "user" as "admin" | "user" });
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [userFeedback, setUserFeedback] = useState("");
+
+  useEffect(() => {
+    loadAll();
+    checkAdmin();
+  }, []);
+
+  async function checkAdmin() {
+    const supabase = createSupabaseBrowser();
+    const { data } = await supabase.auth.getUser();
+    if (data.user?.user_metadata?.role === "admin") {
+      setIsAdmin(true);
+    }
+  }
 
   async function loadAll() {
     const [srcs, cs, bls] = await Promise.all([
@@ -49,6 +76,16 @@ export default function ConfiguracoesPage() {
   function showSaved() {
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
+  }
+
+  async function loadUsers() {
+    setUsersLoading(true);
+    const res = await fetch("/api/admin/users");
+    if (res.ok) {
+      const data = await res.json();
+      setUsers(data);
+    }
+    setUsersLoading(false);
   }
 
   async function saveSource() {
@@ -97,11 +134,74 @@ export default function ConfiguracoesPage() {
     await loadAll();
   }
 
-  const tabs: { key: Tab; label: string; icon: any; count: number }[] = [
+  async function createUser() {
+    if (!newUser.email || !newUser.password) return;
+    setLoading(true);
+    const res = await fetch("/api/admin/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(newUser),
+    });
+    if (res.ok) {
+      setUserModal(false);
+      setNewUser({ email: "", password: "", display_name: "", role: "user" });
+      await loadUsers();
+      showFeedback("Usuário criado com sucesso!");
+    } else {
+      const err = await res.json();
+      showFeedback(err.error ?? "Erro ao criar usuário");
+    }
+    setLoading(false);
+  }
+
+  async function updateUser() {
+    if (!editingUser) return;
+    setLoading(true);
+    const res = await fetch(`/api/admin/users/${editingUser.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(editUserData),
+    });
+    if (res.ok) {
+      setEditUserModal(false);
+      setEditingUser(null);
+      await loadUsers();
+      showFeedback("Usuário atualizado!");
+    }
+    setLoading(false);
+  }
+
+  async function toggleBanUser(user: AppUser) {
+    await fetch(`/api/admin/users/${user.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ banned: !user.banned }),
+    });
+    setBanConfirm(null);
+    await loadUsers();
+    showFeedback(user.banned ? "Usuário ativado!" : "Usuário desativado!");
+  }
+
+  async function sendResetPassword(user: AppUser) {
+    const res = await fetch(`/api/admin/users/${user.id}`, { method: "POST" });
+    setResetConfirm(null);
+    if (res.ok) showFeedback("E-mail de redefinição enviado!");
+    else showFeedback("Erro ao enviar e-mail");
+  }
+
+  function showFeedback(msg: string) {
+    setUserFeedback(msg);
+    setTimeout(() => setUserFeedback(""), 3000);
+  }
+
+  const tabs: { key: Tab; label: string; icon: any; count: number; adminOnly?: boolean }[] = [
     { key: "renda", label: "Fontes de Renda", icon: TrendingUp, count: sources.length },
     { key: "cartoes", label: "Cartões de Crédito", icon: CreditCard, count: cards.length },
     { key: "contas", label: "Contas Fixas", icon: FileText, count: bills.length },
+    { key: "usuarios", label: "Usuários", icon: Users, count: users.length, adminOnly: true },
   ];
+
+  const visibleTabs = tabs.filter(t => !t.adminOnly || isAdmin);
 
   const billGroups = [
     { key: "essencial-1-15", label: "Essenciais 1–15", bills: bills.filter(b => b.category === "essencial" && b.period === "1-15") },
@@ -115,17 +215,17 @@ export default function ConfiguracoesPage() {
   const totalMonthlyIncome = sources.reduce((s, s2) => s + s2.base_amount, 0);
 
   return (
-    <div className="p-6 min-h-screen">
+    <div className="p-4 md:p-6 min-h-screen">
       <PageHeader title="Configurações" subtitle="Gerencie suas fontes de renda, cartões e contas fixas">
-        {saved && (
-          <div className="flex items-center gap-1.5 text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/30 px-3 py-1.5 rounded-lg text-sm font-medium animate-pulse">
-            <Check size={14} /> Salvo!
+        {(saved || userFeedback) && (
+          <div className="flex items-center gap-1.5 text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/30 px-3 py-1.5 rounded-lg text-sm font-medium">
+            <Check size={14} /> {userFeedback || "Salvo!"}
           </div>
         )}
       </PageHeader>
 
       {/* Summary bar */}
-      <div className="grid grid-cols-3 gap-3 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
         <div className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/50 rounded-xl p-3 text-center transition-colors">
           <p className="text-xs text-slate-500 dark:text-slate-400 mb-0.5">Renda Mensal Base</p>
           <p className="text-lg font-bold text-emerald-700 dark:text-emerald-400">{formatCurrency(totalMonthlyIncome)}</p>
@@ -144,19 +244,20 @@ export default function ConfiguracoesPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 p-1 rounded-xl w-fit transition-colors">
-        {tabs.map(({ key, label, icon: Icon, count }) => (
+      <div className="flex flex-wrap gap-1 mb-5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 p-1 rounded-xl w-fit transition-colors">
+        {visibleTabs.map(({ key, label, icon: Icon, count }) => (
           <button
             key={key}
-            onClick={() => setTab(key)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+            onClick={() => { setTab(key); if (key === "usuarios" && users.length === 0) loadUsers(); }}
+            className={`flex items-center gap-2 px-3 md:px-4 py-2 rounded-lg text-sm font-medium transition-all ${
               tab === key
                 ? "bg-primary-600 text-white shadow-sm"
                 : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/50"
             }`}
           >
             <Icon size={14} />
-            {label}
+            <span className="hidden sm:inline">{label}</span>
+            <span className="sm:hidden">{key === "renda" ? "Renda" : key === "cartoes" ? "Cartões" : key === "contas" ? "Contas" : "Usuários"}</span>
             <span className={`text-xs px-1.5 py-0.5 rounded-full ${
               tab === key
                 ? "bg-primary-500 text-white"
@@ -185,8 +286,8 @@ export default function ConfiguracoesPage() {
             {sources.map((src) => (
               <div key={src.id}
                 className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/50 rounded-xl p-4 flex items-center justify-between hover:border-slate-200 dark:hover:border-slate-600 transition-colors">
-                <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
                     src.owner === "pessoa1" ? "bg-primary-50 dark:bg-primary-900/20" :
                     src.owner === "pessoa2" ? "bg-pink-50 dark:bg-pink-900/20" : "bg-emerald-50 dark:bg-emerald-900/20"
                   }`}>
@@ -195,9 +296,9 @@ export default function ConfiguracoesPage() {
                       src.owner === "pessoa2" ? "text-pink-600 dark:text-pink-400" : "text-emerald-600 dark:text-emerald-400"
                     } />
                   </div>
-                  <div>
-                    <p className="font-semibold text-slate-700 dark:text-slate-200 text-sm">{src.name}</p>
-                    <div className="flex items-center gap-2 mt-0.5">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-slate-700 dark:text-slate-200 text-sm truncate">{src.name}</p>
+                    <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                       <span className={`text-xs px-1.5 py-0.5 rounded-full ${
                         src.owner === "pessoa1" ? "bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-400" :
                         src.owner === "pessoa2" ? "bg-pink-50 dark:bg-pink-900/20 text-pink-700 dark:text-pink-400" :
@@ -214,7 +315,7 @@ export default function ConfiguracoesPage() {
                     </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 shrink-0">
                   <p className="text-lg font-bold text-emerald-700 dark:text-emerald-400">{formatCurrency(src.base_amount)}</p>
                   <div className="flex gap-1">
                     <button onClick={() => { setEditSource(src); setSourceModal(true); }}
@@ -271,7 +372,6 @@ export default function ConfiguracoesPage() {
                     ? "border-slate-100 dark:border-slate-700/50 hover:border-slate-200 dark:hover:border-slate-600"
                     : "border-slate-100 dark:border-slate-700/50 opacity-60"
                 }`}>
-                {/* Card visual */}
                 <div
                   className="h-14 rounded-lg mb-3 flex items-center justify-between px-3"
                   style={{ background: `linear-gradient(135deg, ${card.color}cc, ${card.color})` }}
@@ -285,7 +385,7 @@ export default function ConfiguracoesPage() {
 
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className={`text-xs px-1.5 py-0.5 rounded-full ${
                         card.owner === "pessoa1"
                           ? "bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-400"
@@ -354,8 +454,8 @@ export default function ConfiguracoesPage() {
                       className={`flex items-center justify-between px-4 py-3 border-b border-slate-50 dark:border-slate-700/30 last:border-0 ${
                         !bill.active ? "opacity-50" : ""
                       }`}>
-                      <div className="flex items-center gap-2.5">
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
                           bill.category === "essencial"
                             ? "bg-primary-50 dark:bg-primary-900/20"
                             : "bg-amber-50 dark:bg-amber-900/20"
@@ -366,16 +466,16 @@ export default function ConfiguracoesPage() {
                               : "text-amber-600 dark:text-amber-400"
                           } />
                         </div>
-                        <div>
+                        <div className="min-w-0">
                           <div className="flex items-center gap-1.5">
-                            <p className="text-sm font-medium text-slate-700 dark:text-slate-200">{bill.name}</p>
+                            <p className="text-sm font-medium text-slate-700 dark:text-slate-200 truncate">{bill.name}</p>
                             {!bill.active && (
-                              <span className="text-xs bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-1.5 py-0.5 rounded-full">
+                              <span className="text-xs bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-1.5 py-0.5 rounded-full shrink-0">
                                 inativa
                               </span>
                             )}
                           </div>
-                          <div className="flex items-center gap-2 mt-0.5">
+                          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                             {bill.due_day && (
                               <span className="text-xs text-slate-400 dark:text-slate-500">Dia {bill.due_day}</span>
                             )}
@@ -390,7 +490,7 @@ export default function ConfiguracoesPage() {
                           </div>
                         </div>
                       </div>
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2 md:gap-3 shrink-0">
                         <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{formatCurrency(bill.amount)}</p>
                         <Toggle size="sm" checked={bill.active} onChange={() => toggleBillActive(bill)} />
                         <div className="flex gap-1">
@@ -430,6 +530,113 @@ export default function ConfiguracoesPage() {
         </div>
       )}
 
+      {/* ── USUÁRIOS ── */}
+      {tab === "usuarios" && isAdmin && (
+        <div className="max-w-3xl">
+          <div className="flex justify-between items-center mb-3">
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Gerencie quem tem acesso ao app. Apenas admins podem criar, editar e desativar usuários.
+            </p>
+            <button onClick={() => { setNewUser({ email: "", password: "", display_name: "", role: "user" }); setUserModal(true); }}
+              className="btn-primary flex items-center gap-1.5 shrink-0">
+              <Plus size={14} /> Novo Usuário
+            </button>
+          </div>
+
+          {usersLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="w-6 h-6 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {users.map((u) => (
+                <div key={u.id}
+                  className={`bg-white dark:bg-slate-800 border rounded-xl p-4 transition-all ${
+                    u.banned
+                      ? "border-red-100 dark:border-red-900/30 opacity-70"
+                      : "border-slate-100 dark:border-slate-700/50 hover:border-slate-200 dark:hover:border-slate-600"
+                  }`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                        u.role === "admin"
+                          ? "bg-primary-50 dark:bg-primary-900/20"
+                          : "bg-slate-100 dark:bg-slate-700"
+                      }`}>
+                        {u.role === "admin"
+                          ? <ShieldCheck size={16} className="text-primary-600 dark:text-primary-400" />
+                          : <User size={16} className="text-slate-500 dark:text-slate-400" />
+                        }
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="font-semibold text-slate-700 dark:text-slate-200 text-sm">
+                            {u.display_name || u.email}
+                          </p>
+                          <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
+                            u.role === "admin"
+                              ? "bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-400"
+                              : "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300"
+                          }`}>
+                            {u.role === "admin" ? "Admin" : "Usuário"}
+                          </span>
+                          {u.banned && (
+                            <span className="text-xs px-1.5 py-0.5 rounded-full bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400">
+                              Desativado
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5 truncate">{u.email}</p>
+                        <p className="text-xs text-slate-400 dark:text-slate-500">
+                          Criado em {new Date(u.created_at).toLocaleDateString("pt-BR")}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        onClick={() => { setEditingUser(u); setEditUserData({ display_name: u.display_name, role: u.role }); setEditUserModal(true); }}
+                        title="Editar"
+                        className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
+                        <Pencil size={14} className="text-slate-400 dark:text-slate-500" />
+                      </button>
+                      <button
+                        onClick={() => setResetConfirm(u)}
+                        title="Redefinir senha"
+                        className="p-2 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-lg transition-colors">
+                        <RotateCcw size={14} className="text-amber-500" />
+                      </button>
+                      <button
+                        onClick={() => setBanConfirm(u)}
+                        title={u.banned ? "Ativar usuário" : "Desativar usuário"}
+                        className={`p-2 rounded-lg transition-colors ${
+                          u.banned
+                            ? "hover:bg-emerald-50 dark:hover:bg-emerald-900/20"
+                            : "hover:bg-red-50 dark:hover:bg-red-900/20"
+                        }`}>
+                        {u.banned
+                          ? <ShieldCheck size={14} className="text-emerald-500" />
+                          : <ShieldX size={14} className="text-red-400" />
+                        }
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {users.length === 0 && (
+                <div className="bg-white dark:bg-slate-800 border-2 border-dashed border-slate-200 dark:border-slate-600 rounded-xl p-8 text-center transition-colors">
+                  <Users size={28} className="text-slate-300 dark:text-slate-600 mx-auto mb-2" />
+                  <p className="text-slate-500 dark:text-slate-400 text-sm mb-3">Nenhum usuário encontrado</p>
+                  <button onClick={() => { setNewUser({ email: "", password: "", display_name: "", role: "user" }); setUserModal(true); }}
+                    className="btn-primary">Criar Usuário</button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ── MODAL: Fonte de Renda ── */}
       <Modal open={sourceModal} onClose={() => { setSourceModal(false); setEditSource({}); }}
         title={editSource.id ? "Editar Fonte de Renda" : "Nova Fonte de Renda"}>
@@ -440,7 +647,7 @@ export default function ConfiguracoesPage() {
               value={editSource.name ?? ""}
               onChange={e => setEditSource(p => ({ ...p, name: e.target.value }))} />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="label">Valor Base (R$)</label>
               <input className="input" type="number" step="0.01"
@@ -454,7 +661,7 @@ export default function ConfiguracoesPage() {
                 onChange={e => setEditSource(p => ({ ...p, due_day: Number(e.target.value) || null }))} />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="label">Responsável</label>
               <select className="input" value={editSource.owner ?? "casal"}
@@ -487,7 +694,6 @@ export default function ConfiguracoesPage() {
       <Modal open={cardModal} onClose={() => { setCardModal(false); setEditCard({}); }}
         title={editCard.id ? "Editar Cartão" : "Novo Cartão de Crédito"}>
         <div className="space-y-3">
-          {/* Preview */}
           <div
             className="h-16 rounded-xl flex items-center justify-between px-4"
             style={{ background: `linear-gradient(135deg, ${(editCard.color ?? "#6366f1") + "cc"}, ${editCard.color ?? "#6366f1"})` }}
@@ -505,7 +711,7 @@ export default function ConfiguracoesPage() {
               value={editCard.name ?? ""}
               onChange={e => setEditCard(p => ({ ...p, name: e.target.value.toUpperCase() }))} />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="label">Banco</label>
               <input className="input" placeholder="Ex: Nubank"
@@ -519,13 +725,14 @@ export default function ConfiguracoesPage() {
                 onChange={e => setEditCard(p => ({ ...p, due_day: Number(e.target.value) }))} />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="label">Titular</label>
               <select className="input" value={editCard.owner ?? "pessoa1"}
                 onChange={e => setEditCard(p => ({ ...p, owner: e.target.value as any }))}>
                 <option value="pessoa1">Pessoa 1</option>
                 <option value="pessoa2">Pessoa 2</option>
+                <option value="casal">Casal</option>
               </select>
             </div>
             <div>
@@ -570,7 +777,7 @@ export default function ConfiguracoesPage() {
               value={editBill.name ?? ""}
               onChange={e => setEditBill(p => ({ ...p, name: e.target.value }))} />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="label">Valor Mensal (R$)</label>
               <input className="input" type="number" step="0.01"
@@ -584,7 +791,7 @@ export default function ConfiguracoesPage() {
                 onChange={e => setEditBill(p => ({ ...p, due_day: Number(e.target.value) || null }))} />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="label">Categoria</label>
               <select className="input" value={editBill.category ?? "essencial"}
@@ -603,7 +810,7 @@ export default function ConfiguracoesPage() {
               </select>
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="label">Parcela Atual</label>
               <input className="input" type="number" placeholder="—"
@@ -627,6 +834,143 @@ export default function ConfiguracoesPage() {
             <button onClick={() => { setBillModal(false); setEditBill({}); }} className="btn-secondary flex-1">Cancelar</button>
             <button onClick={saveBill} disabled={loading} className="btn-primary flex-1 flex items-center justify-center gap-2">
               <Save size={14} /> Salvar
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* ── MODAL: Novo Usuário ── */}
+      <Modal open={userModal} onClose={() => setUserModal(false)}
+        title="Criar Novo Usuário">
+        <div className="space-y-3">
+          <div>
+            <label className="label">E-mail</label>
+            <input className="input" type="email" placeholder="usuario@email.com"
+              value={newUser.email}
+              onChange={e => setNewUser(p => ({ ...p, email: e.target.value }))} />
+          </div>
+          <div>
+            <label className="label">Senha</label>
+            <div className="relative">
+              <input className="input pr-10" type={showNewPassword ? "text" : "password"} placeholder="Mínimo 6 caracteres"
+                value={newUser.password}
+                onChange={e => setNewUser(p => ({ ...p, password: e.target.value }))} />
+              <button type="button" tabIndex={-1}
+                onClick={() => setShowNewPassword(v => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors">
+                {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="label">Nome (opcional)</label>
+              <input className="input" placeholder="Ex: João"
+                value={newUser.display_name}
+                onChange={e => setNewUser(p => ({ ...p, display_name: e.target.value }))} />
+            </div>
+            <div>
+              <label className="label">Permissão</label>
+              <select className="input" value={newUser.role}
+                onChange={e => setNewUser(p => ({ ...p, role: e.target.value as any }))}>
+                <option value="user">Usuário comum</option>
+                <option value="admin">Administrador</option>
+              </select>
+            </div>
+          </div>
+          <div className="bg-slate-50 dark:bg-slate-700/50 rounded-lg p-3 text-xs text-slate-500 dark:text-slate-400 flex items-start gap-2">
+            <Lock size={13} className="mt-0.5 shrink-0" />
+            O usuário poderá alterar a própria senha após o primeiro acesso.
+          </div>
+          <div className="flex gap-2 pt-2">
+            <button onClick={() => setUserModal(false)} className="btn-secondary flex-1">Cancelar</button>
+            <button onClick={createUser} disabled={loading || !newUser.email || !newUser.password}
+              className="btn-primary flex-1 flex items-center justify-center gap-2">
+              <Users size={14} /> Criar Usuário
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* ── MODAL: Editar Usuário ── */}
+      <Modal open={editUserModal} onClose={() => { setEditUserModal(false); setEditingUser(null); }}
+        title="Editar Usuário">
+        <div className="space-y-3">
+          <div>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
+              E-mail: <span className="font-medium text-slate-700 dark:text-slate-300">{editingUser?.email}</span>
+            </p>
+          </div>
+          <div>
+            <label className="label">Nome de exibição</label>
+            <input className="input" placeholder="Ex: João"
+              value={editUserData.display_name}
+              onChange={e => setEditUserData(p => ({ ...p, display_name: e.target.value }))} />
+          </div>
+          <div>
+            <label className="label">Permissão</label>
+            <select className="input" value={editUserData.role}
+              onChange={e => setEditUserData(p => ({ ...p, role: e.target.value as any }))}>
+              <option value="user">Usuário comum</option>
+              <option value="admin">Administrador</option>
+            </select>
+          </div>
+          <div className="flex gap-2 pt-2">
+            <button onClick={() => { setEditUserModal(false); setEditingUser(null); }} className="btn-secondary flex-1">Cancelar</button>
+            <button onClick={updateUser} disabled={loading} className="btn-primary flex-1 flex items-center justify-center gap-2">
+              <Save size={14} /> Salvar
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* ── MODAL: Reset Senha ── */}
+      <Modal open={!!resetConfirm} onClose={() => setResetConfirm(null)} title="Redefinir Senha" size="sm">
+        <div className="text-center space-y-4">
+          <div className="w-12 h-12 bg-amber-50 dark:bg-amber-900/20 rounded-full flex items-center justify-center mx-auto">
+            <RotateCcw size={22} className="text-amber-500" />
+          </div>
+          <div>
+            <p className="text-sm text-slate-600 dark:text-slate-300">Enviar e-mail de redefinição de senha para</p>
+            <p className="font-bold text-slate-800 dark:text-slate-100 mt-0.5">{resetConfirm?.email}</p>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={() => setResetConfirm(null)} className="btn-secondary flex-1">Cancelar</button>
+            <button onClick={() => resetConfirm && sendResetPassword(resetConfirm)}
+              className="flex-1 bg-amber-500 hover:bg-amber-600 text-white font-medium px-4 py-2 rounded-lg transition-colors text-sm flex items-center justify-center gap-2">
+              <RotateCcw size={14} /> Enviar
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* ── MODAL: Ban/Unban ── */}
+      <Modal open={!!banConfirm} onClose={() => setBanConfirm(null)} title={banConfirm?.banned ? "Ativar Usuário" : "Desativar Usuário"} size="sm">
+        <div className="text-center space-y-4">
+          <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto ${
+            banConfirm?.banned ? "bg-emerald-50 dark:bg-emerald-900/20" : "bg-red-50 dark:bg-red-900/20"
+          }`}>
+            {banConfirm?.banned
+              ? <ShieldCheck size={22} className="text-emerald-500" />
+              : <ShieldX size={22} className="text-red-500" />
+            }
+          </div>
+          <div>
+            <p className="text-sm text-slate-600 dark:text-slate-300">
+              {banConfirm?.banned ? "Reativar acesso de" : "Bloquear acesso de"}
+            </p>
+            <p className="font-bold text-slate-800 dark:text-slate-100 mt-0.5">{banConfirm?.email}</p>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={() => setBanConfirm(null)} className="btn-secondary flex-1">Cancelar</button>
+            <button onClick={() => banConfirm && toggleBanUser(banConfirm)}
+              className={`flex-1 text-white font-medium px-4 py-2 rounded-lg transition-colors text-sm flex items-center justify-center gap-2 ${
+                banConfirm?.banned
+                  ? "bg-emerald-600 hover:bg-emerald-700"
+                  : "bg-red-600 hover:bg-red-700"
+              }`}>
+              {banConfirm?.banned ? <ShieldCheck size={14} /> : <ShieldX size={14} />}
+              {banConfirm?.banned ? "Ativar" : "Desativar"}
             </button>
           </div>
         </div>

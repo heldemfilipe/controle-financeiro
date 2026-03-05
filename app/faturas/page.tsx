@@ -121,14 +121,14 @@ export default function FaturasPage() {
   const grandTotal = allTxsThisMonth.reduce((s, t) => s + Math.abs(t.amount), 0);
 
   return (
-    <div className="p-6 min-h-screen">
+    <div className="p-4 md:p-6 min-h-screen">
       <PageHeader title="Faturas" subtitle="Detalhamento das faturas dos cartões">
         <MonthSelector month={month} year={year}
           onChange={(m, y) => { setMonth(m); setYear(y); }} />
       </PageHeader>
 
       {/* Cards Overview */}
-      <div className="grid grid-cols-2 xl:grid-cols-3 gap-3 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 mb-6">
         {cards.map((card) => {
           const total = getCardTotal(card.id);
           const status = getCardStatus(card);
@@ -223,7 +223,7 @@ export default function FaturasPage() {
 
       {/* Selected Card Detail */}
       {selectedCard && (
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           {/* Transactions List */}
           <div className="xl:col-span-2 card">
             <div className="flex items-center justify-between mb-4">

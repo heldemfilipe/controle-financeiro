@@ -145,7 +145,7 @@ export default function AnalisePage() {
   const barKeys = [...catNames, "Cartões"];
 
   return (
-    <div className="p-6 min-h-screen">
+    <div className="p-4 md:p-6 min-h-screen">
       <PageHeader title="Análise por Categoria" subtitle="Distribuição de gastos mensal e anual">
         <MonthSelector month={month} year={year}
           onChange={(m, y) => { setMonth(m); setYear(y); }} />
@@ -159,7 +159,7 @@ export default function AnalisePage() {
         <div className="space-y-6">
 
           {/* ── Resumo do mês ──────────────────────────────────────────────── */}
-          <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
             <div className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/50 rounded-xl p-3.5 transition-colors">
               <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Receitas</p>
               <p className="text-lg font-bold text-emerald-600">{formatCurrency(incomeTotal)}</p>
@@ -188,7 +188,7 @@ export default function AnalisePage() {
           </div>
 
           {/* ── Linha superior: Pizza + Lista de categorias ────────────────── */}
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
 
             {/* Pizza — gastos do mês */}
             <div className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/50 rounded-xl p-5 transition-colors">

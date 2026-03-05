@@ -539,7 +539,7 @@ export default function ConfiguracoesPage() {
                   onChange={e => setEditCard(p => ({ ...p, color: e.target.value }))} />
               </div>
               <div className="flex gap-1.5 mt-1.5">
-                {["#ff6900", "#820AD1", "#003087", "#e64600", "#005ea5", "#6366f1", "#10b981"].map(c => (
+                {["#6366f1", "#8b5cf6", "#ec4899", "#ef4444", "#f59e0b", "#10b981", "#06b6d4"].map(c => (
                   <button key={c} onClick={() => setEditCard(p => ({ ...p, color: c }))}
                     className="w-5 h-5 rounded-full border-2 transition-all"
                     style={{

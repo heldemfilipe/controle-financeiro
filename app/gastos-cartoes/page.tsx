@@ -243,7 +243,7 @@ export default function GastosCataoesPage() {
             {viewMode === "mensal" ? (
               <BarChart
                 data={cardStats.filter(c => c.total > 0).map(c => ({
-                  name: c.card.name.replace(" HELDEM", " H.").replace(" VITORIA", " V."),
+                  name: c.card.name,
                   total: c.total,
                   color: c.card.color,
                   count: c.count,
@@ -307,7 +307,7 @@ export default function GastosCataoesPage() {
                     <div className="flex items-center gap-1.5">
                       <div className="w-2 h-2 rounded-full" style={{ backgroundColor: d.color }} />
                       <span className="text-xs text-slate-600 dark:text-slate-300 truncate max-w-[110px]">
-                        {d.name.replace(" HELDEM", " H.").replace(" VITORIA", " V.")}
+                        {d.name}
                       </span>
                     </div>
                     <div className="text-right">
@@ -355,7 +355,7 @@ export default function GastosCataoesPage() {
                           {card && (
                             <span className="text-xs px-1.5 py-0.5 rounded-full"
                               style={{ backgroundColor: card.color + "22", color: card.color }}>
-                              {card.name.replace(" HELDEM", " H.").replace(" VITORIA", " V.")}
+                              {card.name}
                             </span>
                           )}
                           {tx.transaction_date && (
@@ -436,7 +436,7 @@ export default function GastosCataoesPage() {
                       <div className="flex items-center gap-1.5">
                         <div className="w-2 h-2 rounded-full" style={{ backgroundColor: card.color }} />
                         <span className="text-slate-700 dark:text-slate-200 font-medium truncate max-w-[120px]">
-                          {card.name.replace(" HELDEM", " H.").replace(" VITORIA", " V.")}
+                          {card.name}
                         </span>
                       </div>
                     </td>

@@ -531,7 +531,7 @@ export default function LancamentosPage() {
         <div className="space-y-3">
           <div>
             <label className="label">Nome</label>
-            <input className="input" placeholder="Ex: Salário Heldem dia 15"
+            <input className="input" placeholder="Ex: Salário Pessoa 1 dia 15"
               value={editIncome.name ?? ""}
               onChange={e => setEditIncome(p => ({ ...p, name: e.target.value }))} />
           </div>
@@ -554,8 +554,8 @@ export default function LancamentosPage() {
               <label className="label">Responsável</label>
               <select className="input" value={editIncome.owner ?? "casal"}
                 onChange={e => setEditIncome(p => ({ ...p, owner: e.target.value as any }))}>
-                <option value="heldem">Heldem</option>
-                <option value="vitoria">Vitoria</option>
+                <option value="pessoa1">Pessoa 1</option>
+                <option value="pessoa2">Pessoa 2</option>
                 <option value="casal">Casal</option>
               </select>
             </div>
@@ -761,7 +761,7 @@ export default function LancamentosPage() {
         <div className="space-y-3">
           <div>
             <label className="label">Nome do Cartão</label>
-            <input className="input" placeholder="Ex: NUBANK HELDEM"
+            <input className="input" placeholder="Ex: NUBANK P1"
               value={editCard.name ?? ""}
               onChange={e => setEditCard(p => ({ ...p, name: e.target.value }))} />
           </div>
@@ -782,10 +782,10 @@ export default function LancamentosPage() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="label">Titular</label>
-              <select className="input" value={editCard.owner ?? "heldem"}
+              <select className="input" value={editCard.owner ?? "pessoa1"}
                 onChange={e => setEditCard(p => ({ ...p, owner: e.target.value as any }))}>
-                <option value="heldem">Heldem</option>
-                <option value="vitoria">Vitoria</option>
+                <option value="pessoa1">Pessoa 1</option>
+                <option value="pessoa2">Pessoa 2</option>
               </select>
             </div>
             <div>

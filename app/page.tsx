@@ -18,7 +18,7 @@ import {
   getCardTransactions, getFixedBills, getCreditCards,
   getMonthlyCardPayments, getIncomeSources,
 } from "@/lib/queries";
-import { formatCurrency, getMonthName, getCurrentMonth, getAccConfig } from "@/lib/utils";
+import { formatCurrency, getMonthName, getCurrentMonth, getAccConfig, computeInstallment } from "@/lib/utils";
 import { MONTH_SHORT } from "@/types";
 
 const COLORS = ["#6366f1", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4", "#f97316"];
@@ -73,13 +73,34 @@ export default function DashboardPage() {
         ? incomes.reduce((s, i) => s + i.amount, 0)
         : baseRecurringIncome;
 
-      // Bills - merge fixed bills not yet in monthly_bill_payments
+      // Separa dízimo das contas regulares
+      const titheBillItem = allBills.find(b => b.is_tithe);
+      const regularAllBills = allBills.filter(b => !b.is_tithe);
+
+      // Filtra installment bills fora do intervalo ativo
+      const visibleBills = regularAllBills.filter(bill => {
+        if (!bill.installment_total) return true;
+        if (bill.installment_start_month == null || bill.installment_start_year == null) return true;
+        return computeInstallment(bill, month, year) !== null;
+      });
+
+      // Merge: pagamentos do mês + contas sem registro (apenas visíveis)
       const billIds = bills.map(b => b.bill_id);
-      const missingBills = allBills.filter(b => !billIds.includes(b.id));
-      const allBillsThisMonth = [
-        ...bills.map(b => ({ amount: b.amount ?? b.fixed_bills?.amount ?? 0, category: b.fixed_bills?.category ?? "outros" })),
-        ...missingBills.map(b => ({ amount: b.amount, category: b.category }))
+      const missingBills = visibleBills.filter(b => !billIds.includes(b.id));
+      const regularItems: { amount: number; category: string }[] = [
+        ...bills
+          .filter(b => visibleBills.some(vb => vb.id === b.bill_id))
+          .map(b => ({ amount: b.amount ?? b.fixed_bills?.amount ?? 0, category: b.fixed_bills?.category ?? "outros" })),
+        ...missingBills.map(b => ({ amount: b.amount, category: b.category })),
       ];
+
+      // Dízimo: usa valor do pagamento se existir, senão computa 10% da renda
+      const tithePayment = titheBillItem ? bills.find(b => b.bill_id === titheBillItem.id) : null;
+      const titheAmt = tithePayment?.amount ?? (titheBillItem ? inc * 0.1 : 0);
+      const titheCategory = titheBillItem?.category ?? "essencial";
+      const allBillsThisMonth = titheBillItem
+        ? [...regularItems, { amount: titheAmt, category: titheCategory }]
+        : regularItems;
 
       const essencial = allBillsThisMonth.filter(b => b.category === "essencial").reduce((s, b) => s + b.amount, 0);
       const outros = allBillsThisMonth.filter(b => b.category === "outros").reduce((s, b) => s + b.amount, 0);
@@ -116,7 +137,7 @@ export default function DashboardPage() {
       });
       setBillsPaid(billSummary);
 
-      // Gráfico anual — reutiliza allBills e baseRecurringIncome já carregados
+      // Gráfico anual — aplica mesma lógica: installment filter + dízimo dinâmico
       const yearlyPromises = Array.from({ length: 12 }, async (_, i) => {
         const m = i + 1;
         const [inc2, billPay, txs2] = await Promise.all([
@@ -124,18 +145,29 @@ export default function DashboardPage() {
           getMonthlyBillPayments(m, year),
           getCardTransactions(m, year),
         ]);
-        // Se há registros mensais de income, usa eles; senão usa base recorrente
         const income2 = inc2.length > 0
           ? inc2.reduce((s, i) => s + i.amount, 0)
           : baseRecurringIncome;
+
+        // Filtra installments ativos para o mês m
+        const visible2 = regularAllBills.filter(bill => {
+          if (!bill.installment_total) return true;
+          if (bill.installment_start_month == null || bill.installment_start_year == null) return true;
+          return computeInstallment(bill, m, year) !== null;
+        });
         const billIds2 = billPay.map(b => b.bill_id);
-        const missingBills2 = allBills.filter(b => !billIds2.includes(b.id));
-        const bills2 = [
-          ...billPay.map(b => b.amount ?? b.fixed_bills?.amount ?? 0),
-          ...missingBills2.map(b => b.amount)
+        const missing2 = visible2.filter(b => !billIds2.includes(b.id));
+        const regularTotal2 = [
+          ...billPay.filter(b => visible2.some(vb => vb.id === b.bill_id)).map(b => b.amount ?? b.fixed_bills?.amount ?? 0),
+          ...missing2.map(b => b.amount),
         ].reduce((s, v) => s + v, 0);
+
+        // Dízimo anual: usa pagamento se existir, senão 10% da renda do mês
+        const tithePay2 = titheBillItem ? billPay.find(b => b.bill_id === titheBillItem.id) : null;
+        const titheAmt2 = tithePay2?.amount ?? (titheBillItem ? income2 * 0.1 : 0);
+
         const cards2 = txs2.reduce((s, t) => s + Math.abs(t.amount), 0);
-        return { name: MONTH_SHORT[i], receitas: income2, despesas: bills2 + cards2 };
+        return { name: MONTH_SHORT[i], receitas: income2, despesas: regularTotal2 + titheAmt2 + cards2 };
       });
       const yd = await Promise.all(yearlyPromises);
 

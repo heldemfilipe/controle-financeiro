@@ -12,6 +12,7 @@ import {
 } from "recharts";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { MonthSelector } from "@/components/ui/MonthSelector";
+import { ChartTooltip } from "@/components/ui/ChartTooltip";
 import { getCreditCards, getCardTransactions } from "@/lib/queries";
 import { formatCurrency, getCurrentMonth, getMonthName } from "@/lib/utils";
 import { MONTH_SHORT } from "@/types";
@@ -99,21 +100,6 @@ export default function GastosCataoesPage() {
     .sort((a, b) => b[1].total - a[1].total)
     .slice(0, 8)
     .map(([name, stats]) => ({ name, ...stats }));
-
-  const CustomTooltip = ({ active, payload, label }: any) => {
-    if (!active || !payload?.length) return null;
-    return (
-      <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl p-3 shadow-lg text-xs">
-        <p className="font-semibold text-slate-700 dark:text-slate-200 mb-2">{label}</p>
-        {payload.map((p: any, i: number) => (
-          <div key={i} className="flex justify-between gap-4">
-            <span style={{ color: p.color ?? p.fill }}>{p.name}</span>
-            <span className="font-medium text-slate-700 dark:text-slate-200">{formatCurrency(p.value)}</span>
-          </div>
-        ))}
-      </div>
-    );
-  };
 
   return (
     <div className="p-6 min-h-screen">
@@ -243,7 +229,7 @@ export default function GastosCataoesPage() {
             {viewMode === "mensal" ? (
               <BarChart
                 data={cardStats.filter(c => c.total > 0).map(c => ({
-                  name: c.card.name,
+                  name: c.card.name.replace(" HELDEM", " H.").replace(" VITORIA", " V."),
                   total: c.total,
                   color: c.card.color,
                   count: c.count,
@@ -254,7 +240,7 @@ export default function GastosCataoesPage() {
                 <XAxis dataKey="name" tick={{ fontSize: 10, fill: "#94a3b8" }} angle={-15} textAnchor="end" />
                 <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }}
                   tickFormatter={v => `${(v / 1000).toFixed(1)}k`} />
-                <Tooltip content={<CustomTooltip />} />
+                <Tooltip content={<ChartTooltip />} />
                 <Bar dataKey="total" name="Total" radius={[6, 6, 0, 0]}>
                   {cardStats.filter(c => c.total > 0).map((c, i) => (
                     <Cell key={i} fill={c.card.color} />
@@ -267,7 +253,7 @@ export default function GastosCataoesPage() {
                 <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#94a3b8" }} />
                 <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }}
                   tickFormatter={v => `${(v / 1000).toFixed(1)}k`} />
-                <Tooltip content={<CustomTooltip />} />
+                <Tooltip content={<ChartTooltip />} />
                 <Legend wrapperStyle={{ fontSize: 10 }} />
                 {cards.map((card) => (
                   <Line
@@ -307,7 +293,7 @@ export default function GastosCataoesPage() {
                     <div className="flex items-center gap-1.5">
                       <div className="w-2 h-2 rounded-full" style={{ backgroundColor: d.color }} />
                       <span className="text-xs text-slate-600 dark:text-slate-300 truncate max-w-[110px]">
-                        {d.name}
+                        {d.name.replace(" HELDEM", " H.").replace(" VITORIA", " V.")}
                       </span>
                     </div>
                     <div className="text-right">
@@ -355,7 +341,7 @@ export default function GastosCataoesPage() {
                           {card && (
                             <span className="text-xs px-1.5 py-0.5 rounded-full"
                               style={{ backgroundColor: card.color + "22", color: card.color }}>
-                              {card.name}
+                              {card.name.replace(" HELDEM", " H.").replace(" VITORIA", " V.")}
                             </span>
                           )}
                           {tx.transaction_date && (
@@ -436,7 +422,7 @@ export default function GastosCataoesPage() {
                       <div className="flex items-center gap-1.5">
                         <div className="w-2 h-2 rounded-full" style={{ backgroundColor: card.color }} />
                         <span className="text-slate-700 dark:text-slate-200 font-medium truncate max-w-[120px]">
-                          {card.name}
+                          {card.name.replace(" HELDEM", " H.").replace(" VITORIA", " V.")}
                         </span>
                       </div>
                     </td>

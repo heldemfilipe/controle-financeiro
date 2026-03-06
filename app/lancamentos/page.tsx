@@ -143,49 +143,61 @@ export default function LancamentosPage() {
     if (!editTx.card_id || !editTx.description || !editTx.amount) return;
     setLoading(true);
 
-    const totalInstallments = Math.max(1, editTx.installment_total ?? 1);
-    const perInstallment    = Math.abs(Number(editTx.amount));
-    const totalAmount       = perInstallment * totalInstallments;
+    try {
+      const totalInstallments = Math.max(1, editTx.installment_total ?? 1);
+      const perInstallment    = Math.abs(Number(editTx.amount));
+      const totalAmount       = perInstallment * totalInstallments;
+      const category          = editTx.category ?? null;
 
-    if (editTx.id) {
-      // Edição: atualiza só esta parcela específica
-      await upsertCardTransaction({
-        ...editTx,
-        amount: -(Math.abs(Number(editTx.amount))),
-      });
-    } else if (totalInstallments === 1) {
-      // Compra à vista: cria uma única transação no mês escolhido
-      await upsertCardTransaction({
-        card_id: editTx.card_id!, description: editTx.description!,
-        amount: -totalAmount, installment_current: 1, installment_total: 1,
-        month: editTx.month ?? month,
-        year:  editTx.year  ?? year,
-      });
-    } else {
-      // Compra parcelada: distribui a partir da parcela inicial no mês escolhido
-      const startInst  = Math.max(1, Math.min(editTx.installment_current ?? 1, totalInstallments));
-      const startMonth = editTx.month ?? month;
-      const startYear  = editTx.year  ?? year;
-      const remaining  = totalInstallments - startInst + 1;
-      let m = startMonth, y = startYear;
-      const parcelas = Array.from({ length: remaining }, (_, i) => {
-        const entry = {
-          card_id: editTx.card_id!,
-          description: editTx.description!,
-          amount: -parseFloat(perInstallment.toFixed(2)),
-          installment_current: startInst + i,
-          installment_total: totalInstallments,
-          month: m, year: y,
-        };
-        m = m === 12 ? 1 : m + 1;
-        if (m === 1) y++;
-        return entry;
-      });
-      await insertCardTransactions(parcelas);
+      if (editTx.id) {
+        // Edição: strip credit_cards (campo de join, não é coluna) e salva
+        const { credit_cards: _cc, ...txPayload } = editTx as any;
+        await upsertCardTransaction({
+          ...txPayload,
+          category,
+          amount: -(Math.abs(Number(editTx.amount))),
+        });
+      } else if (totalInstallments === 1) {
+        // Compra à vista
+        await upsertCardTransaction({
+          card_id: editTx.card_id!, description: editTx.description!,
+          amount: -totalAmount, installment_current: 1, installment_total: 1,
+          month: editTx.month ?? month,
+          year:  editTx.year  ?? year,
+          category,
+        });
+      } else {
+        // Compra parcelada: distribui a partir da parcela inicial
+        const startInst  = Math.max(1, Math.min(editTx.installment_current ?? 1, totalInstallments));
+        const startMonth = editTx.month ?? month;
+        const startYear  = editTx.year  ?? year;
+        const remaining  = totalInstallments - startInst + 1;
+        let m = startMonth, y = startYear;
+        const parcelas = Array.from({ length: remaining }, (_, i) => {
+          const entry = {
+            card_id: editTx.card_id!,
+            description: editTx.description!,
+            amount: -parseFloat(perInstallment.toFixed(2)),
+            installment_current: startInst + i,
+            installment_total: totalInstallments,
+            month: m, year: y,
+            category,
+          };
+          m = m === 12 ? 1 : m + 1;
+          if (m === 1) y++;
+          return entry;
+        });
+        await insertCardTransactions(parcelas);
+      }
+
+      setTxModal(false); setEditTx({});
+      await loadAll();
+    } catch (err) {
+      console.error("Erro ao salvar lançamento:", err);
+      alert("Erro ao salvar. Verifique o console.");
+    } finally {
+      setLoading(false);
     }
-
-    setTxModal(false); setEditTx({});
-    await loadAll(); setLoading(false);
   }
 
   async function removeTx(id: string) {

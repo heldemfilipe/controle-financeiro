@@ -49,7 +49,7 @@ export default function LancamentosPage() {
   const [editTx,     setEditTx]     = useState<Partial<CardTransaction>>({});
   const [loading, setLoading] = useState(false);
   const [billGroupMode, setBillGroupMode] = useState<"quinzena" | "categoria">("quinzena");
-  const [txSortByCategory, setTxSortByCategory] = useState<Record<string, boolean>>({});
+  const [txSort, setTxSort] = useState<Record<string, "date" | "categoria" | "parcelas">>({});
   const [isCredit, setIsCredit] = useState(false);
   const [propagateCategory, setPropagateCategory] = useState(false);
 
@@ -538,12 +538,14 @@ export default function LancamentosPage() {
 
           <div className="space-y-4">
             {creditCards.map((card) => {
-              const isSortedByCat = txSortByCategory[card.id] ?? false;
+              const sortMode = txSort[card.id] ?? "date";
               const rawTxs = cardTxs.filter(t => t.card_id === card.id);
-              const txs = isSortedByCat
-                ? [...rawTxs].sort((a, b) =>
-                    (a.category ?? "").localeCompare(b.category ?? ""))
-                : rawTxs;
+              const txs = sortMode === "categoria"
+                ? [...rawTxs].sort((a, b) => (a.category ?? "").localeCompare(b.category ?? ""))
+                : sortMode === "parcelas"
+                  ? [...rawTxs].sort((a, b) =>
+                      (a.installment_total - a.installment_current) - (b.installment_total - b.installment_current))
+                  : rawTxs;
               // Total líquido: despesas (negativas) − créditos (positivos)
               const total = rawTxs.reduce((s, t) => s - t.amount, 0);
               return (
@@ -560,21 +562,29 @@ export default function LancamentosPage() {
                       {rawTxs.length > 0 && (
                         <div className="flex bg-slate-100 dark:bg-slate-700/60 rounded-lg p-0.5 text-xs">
                           <button
-                            onClick={() => setTxSortByCategory(p => ({ ...p, [card.id]: false }))}
+                            onClick={() => setTxSort(p => ({ ...p, [card.id]: "date" }))}
                             className={`px-2 py-0.5 rounded-md font-medium transition-all ${
-                              !isSortedByCat
+                              sortMode === "date"
                                 ? "bg-white dark:bg-slate-600 text-slate-700 dark:text-slate-100 shadow-sm"
                                 : "text-slate-500 dark:text-slate-400"
                             }`}
                           >Data</button>
                           <button
-                            onClick={() => setTxSortByCategory(p => ({ ...p, [card.id]: true }))}
+                            onClick={() => setTxSort(p => ({ ...p, [card.id]: "categoria" }))}
                             className={`px-2 py-0.5 rounded-md font-medium transition-all ${
-                              isSortedByCat
+                              sortMode === "categoria"
                                 ? "bg-white dark:bg-slate-600 text-slate-700 dark:text-slate-100 shadow-sm"
                                 : "text-slate-500 dark:text-slate-400"
                             }`}
                           >Categoria</button>
+                          <button
+                            onClick={() => setTxSort(p => ({ ...p, [card.id]: "parcelas" }))}
+                            className={`px-2 py-0.5 rounded-md font-medium transition-all ${
+                              sortMode === "parcelas"
+                                ? "bg-white dark:bg-slate-600 text-slate-700 dark:text-slate-100 shadow-sm"
+                                : "text-slate-500 dark:text-slate-400"
+                            }`}
+                          >Parcelas</button>
                         </div>
                       )}
                       <div className="text-right">

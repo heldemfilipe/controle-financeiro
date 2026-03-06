@@ -125,11 +125,13 @@ export default function DashboardPage() {
       if (cardsTotal > 0) pieEntries.push({ name: "Cartões", value: cardsTotal, color: "#ef4444" });
       setPieData(pieEntries);
 
-      // ── Cards summary ─────────────────────────────────────────────────────────
+      // ── Cards summary — usa total confirmado de monthly_card_payments quando disponível ─
       const cardSummary = cards.map(card => {
         const cardTxs = txs.filter(t => t.card_id === card.id);
-        const total = cardTxs.reduce((s, t) => s - t.amount, 0);
+        const txTotal = cardTxs.reduce((s, t) => s - t.amount, 0);
         const payment = cardPayments.find(p => p.card_id === card.id);
+        // Prefere o total armazenado no pagamento (fatura confirmada); senão usa soma das transações
+        const total = payment?.total_amount ?? txTotal;
         return { ...card, total, paid: payment?.paid ?? false };
       }).filter(c => c.total > 0);
       setCardsPaid(cardSummary);
@@ -465,20 +467,33 @@ export default function DashboardPage() {
                 />
               </div>
             </div>
-            <div className="pt-2 mt-2 border-t border-slate-100 dark:border-slate-700/50">
+            <div className="pt-2 mt-2 border-t border-slate-100 dark:border-slate-700/50 space-y-2">
               <div className="flex justify-between items-center">
-                <span className="text-sm font-medium text-slate-600 dark:text-slate-300">Saldo Final</span>
-                <span className={`text-lg font-bold ${balance >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+                <span className="text-sm font-medium text-slate-600 dark:text-slate-300">Saldo do Mês</span>
+                <span className={`text-base font-bold ${balance >= 0 ? "text-emerald-600" : "text-red-600"}`}>
                   {balance >= 0 ? (
-                    <ArrowUpRight size={16} className="inline mr-1" />
+                    <ArrowUpRight size={15} className="inline mr-0.5" />
                   ) : (
-                    <ArrowDownRight size={16} className="inline mr-1" />
+                    <ArrowDownRight size={15} className="inline mr-0.5" />
                   )}
-                  {formatCurrency(Math.abs(balance))}
+                  {formatCurrency(balance)}
                 </span>
               </div>
+              {accBalance !== null && (
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-medium text-slate-600 dark:text-slate-300">Saldo Acumulado</span>
+                  <span className={`text-lg font-bold ${accBalance >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+                    {accBalance >= 0 ? (
+                      <ArrowUpRight size={16} className="inline mr-1" />
+                    ) : (
+                      <ArrowDownRight size={16} className="inline mr-1" />
+                    )}
+                    {formatCurrency(accBalance)}
+                  </span>
+                </div>
+              )}
               {totalIncome > 0 && (
-                <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+                <p className="text-xs text-slate-400 dark:text-slate-500">
                   {((totalExpenses / totalIncome) * 100).toFixed(1)}% da renda comprometida
                 </p>
               )}

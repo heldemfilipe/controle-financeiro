@@ -411,6 +411,7 @@ export default function GastosAnuaisPage() {
                 <th className="text-right py-2 px-3 text-xs font-semibold text-red-500 uppercase tracking-wide">Cartões</th>
                 <th className="text-right py-2 px-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Total Desp.</th>
                 <th className="text-right py-2 px-3 text-xs font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">Saldo</th>
+                <th className="text-right py-2 px-3 text-xs font-semibold text-violet-600 uppercase tracking-wide">Saldo Acum.</th>
                 <th className="text-right py-2 px-3 text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wide">% Renda</th>
               </tr>
             </thead>
@@ -454,6 +455,11 @@ export default function GastosAnuaisPage() {
                       {formatCurrency(row.saldo)}
                     </span>
                   </td>
+                  <td className="py-2.5 px-3 text-right font-semibold">
+                    <span className={row.saldoAcumulado >= 0 ? "text-violet-600 dark:text-violet-400" : "text-red-600"}>
+                      {formatCurrency(row.saldoAcumulado)}
+                    </span>
+                  </td>
                   <td className="py-2.5 px-3 text-right">
                     {row.receitas > 0 ? (
                       <div className="flex items-center justify-end gap-1.5">
@@ -494,6 +500,17 @@ export default function GastosAnuaisPage() {
                   <span className={totalSaldo >= 0 ? "text-emerald-600" : "text-red-600"}>
                     {formatCurrency(totalSaldo)}
                   </span>
+                </td>
+                <td className="py-3 px-3 text-right font-bold">
+                  {(() => {
+                    const last = data[data.length - 1];
+                    const acc = last?.saldoAcumulado ?? 0;
+                    return (
+                      <span className={acc >= 0 ? "text-violet-600 dark:text-violet-400" : "text-red-600"}>
+                        {formatCurrency(acc)}
+                      </span>
+                    );
+                  })()}
                 </td>
                 <td className="py-3 px-3 text-right font-bold text-slate-600 dark:text-slate-300">
                   {totalReceitas > 0 ? `${((totalDespesas / totalReceitas) * 100).toFixed(1)}%` : "—"}

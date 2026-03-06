@@ -536,14 +536,31 @@ export default function GastosMensaisPage() {
                     </div>
                   );
                 })}
-                <div className="pt-2 border-t border-slate-100 dark:border-slate-700/50 flex justify-between">
-                  <span className="text-xs text-slate-500 dark:text-slate-400">
-                    {bills.filter(b => billPayments.find(p => p.bill_id === b.id)?.paid).length}/{bills.length} pagas
-                  </span>
-                  <span className="text-sm font-bold text-slate-700 dark:text-slate-200">
-                    {formatCurrency(billsSum)}
-                  </span>
-                </div>
+                {(() => {
+                  const paidBills   = bills.filter(b => billPayments.find(p => p.bill_id === b.id)?.paid);
+                  const paidSum     = paidBills.reduce((s, b) => s + billAmount(b), 0);
+                  const remaining   = billsSum - paidSum;
+                  return (
+                    <div className="pt-2 border-t border-slate-100 dark:border-slate-700/50 space-y-1.5">
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs text-slate-500 dark:text-slate-400">
+                          {paidBills.length}/{bills.length} pagas
+                        </span>
+                        <span className="text-sm font-bold text-slate-700 dark:text-slate-200">
+                          {formatCurrency(billsSum)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-xs font-medium">
+                        <span className="text-emerald-600 dark:text-emerald-400">
+                          ✓ Pago {formatCurrency(paidSum)}
+                        </span>
+                        <span className={remaining > 0 ? "text-red-500 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"}>
+                          {remaining > 0 ? `Falta ${formatCurrency(remaining)}` : "Tudo pago ✓"}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             )}
           </div>
@@ -562,14 +579,32 @@ export default function GastosMensaisPage() {
             ) : (
               <div className="space-y-2">
                 {sortedCards.map(c => <CardRow key={c.id} card={c} />)}
-                <div className="pt-2 border-t border-slate-100 dark:border-slate-700/50 flex justify-between">
-                  <span className="text-xs text-slate-500 dark:text-slate-400">
-                    {cards.filter(c => cardPayments.find(p => p.card_id === c.id)?.paid).length}/{cards.filter(c => (cardTotals[c.id] ?? 0) > 0).length} pagas
-                  </span>
-                  <span className="text-sm font-bold text-slate-700 dark:text-slate-200">
-                    {formatCurrency(cardsSum)}
-                  </span>
-                </div>
+                {(() => {
+                  const cardsWithValue = cards.filter(c => (cardTotals[c.id] ?? 0) > 0);
+                  const paidCards  = cardsWithValue.filter(c => cardPayments.find(p => p.card_id === c.id)?.paid);
+                  const paidSum    = paidCards.reduce((s, c) => s + (cardTotals[c.id] ?? 0), 0);
+                  const remaining  = cardsSum - paidSum;
+                  return (
+                    <div className="pt-2 border-t border-slate-100 dark:border-slate-700/50 space-y-1.5">
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs text-slate-500 dark:text-slate-400">
+                          {paidCards.length}/{cardsWithValue.length} pagas
+                        </span>
+                        <span className="text-sm font-bold text-slate-700 dark:text-slate-200">
+                          {formatCurrency(cardsSum)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-xs font-medium">
+                        <span className="text-emerald-600 dark:text-emerald-400">
+                          ✓ Pago {formatCurrency(paidSum)}
+                        </span>
+                        <span className={remaining > 0 ? "text-red-500 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"}>
+                          {remaining > 0 ? `Falta ${formatCurrency(remaining)}` : "Tudo pago ✓"}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             )}
           </div>

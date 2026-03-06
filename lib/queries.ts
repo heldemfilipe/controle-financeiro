@@ -172,6 +172,35 @@ export async function deleteCardTransaction(id: string) {
   if (error) throw error;
 }
 
+/** Remove esta parcela e todas as seguintes da mesma compra */
+export async function deleteCardTransactionsFollowing(
+  tx: Pick<CardTransaction, "card_id" | "description" | "installment_total" | "installment_current">
+) {
+  const { error } = await supabase
+    .from("card_transactions")
+    .delete()
+    .eq("card_id", tx.card_id)
+    .eq("description", tx.description)
+    .eq("installment_total", tx.installment_total)
+    .gte("installment_current", tx.installment_current);
+  if (error) throw error;
+}
+
+/** Propaga categoria para esta parcela e todas as seguintes */
+export async function updateCategoryForFollowing(
+  tx: Pick<CardTransaction, "card_id" | "description" | "installment_total" | "installment_current">,
+  category: string | null
+) {
+  const { error } = await supabase
+    .from("card_transactions")
+    .update({ category })
+    .eq("card_id", tx.card_id)
+    .eq("description", tx.description)
+    .eq("installment_total", tx.installment_total)
+    .gte("installment_current", tx.installment_current);
+  if (error) throw error;
+}
+
 /** Insere múltiplas parcelas de uma vez (compra parcelada) */
 export async function insertCardTransactions(txs: Partial<CardTransaction>[]) {
   const { data, error } = await supabase

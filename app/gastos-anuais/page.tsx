@@ -85,8 +85,8 @@ export default function GastosAnuaisPage() {
           const essenciais = allMonthBills.filter(b => b.category === "essencial").reduce((s, b) => s + b.amount, 0);
           const outros = allMonthBills.filter(b => b.category !== "essencial").reduce((s, b) => s + b.amount, 0);
 
-          // Cartões
-          const cartoes = txs.reduce((s, t) => s + Math.abs(t.amount), 0);
+          // Cartões — valor líquido (despesas negativas + créditos positivos)
+          const cartoes = txs.reduce((s, t) => s - t.amount, 0);
 
           const despesas = essenciais + outros + cartoes;
           saldoAcumulado += (receitas - despesas);
@@ -299,8 +299,10 @@ export default function GastosAnuaisPage() {
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
               <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#94a3b8" }} />
               <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }}
-                tickFormatter={v => `${(v / 1000).toFixed(0)}k`} />
+                tickFormatter={v => `${(v / 1000).toFixed(0)}k`}
+                domain={['auto', 'auto']} />
               <Tooltip content={<ChartTooltip />} />
+              <ReferenceLine y={0} stroke="#94a3b8" strokeDasharray="4 4" />
               <Area
                 type="monotone"
                 dataKey="saldoAcumulado"
@@ -325,9 +327,11 @@ export default function GastosAnuaisPage() {
             <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
             <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#94a3b8" }} />
             <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }}
-              tickFormatter={v => `R$${(v / 1000).toFixed(1)}k`} />
+              tickFormatter={v => `R$${(v / 1000).toFixed(1)}k`}
+              domain={['auto', 'auto']} />
             <Tooltip content={<ChartTooltip />} />
             <Legend wrapperStyle={{ fontSize: 11 }} />
+            <ReferenceLine y={0} stroke="#94a3b8" strokeDasharray="4 4" />
             <Line type="monotone" dataKey="receitas" name="Receitas" stroke="#10b981" strokeWidth={2.5} dot={{ r: 4 }} />
             <Line type="monotone" dataKey="despesas" name="Despesas" stroke="#ef4444" strokeWidth={2.5} dot={{ r: 4 }} />
             <Line type="monotone" dataKey="saldo" name="Saldo" stroke="#6366f1" strokeWidth={2} strokeDasharray="5 5" dot={false} />
@@ -447,7 +451,7 @@ export default function GastosAnuaisPage() {
                       ) : (
                         <ArrowDownRight size={12} className="inline mr-0.5" />
                       )}
-                      {formatCurrency(Math.abs(row.saldo))}
+                      {formatCurrency(row.saldo)}
                     </span>
                   </td>
                   <td className="py-2.5 px-3 text-right">

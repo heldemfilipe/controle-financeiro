@@ -12,6 +12,7 @@ import {
   getCategories,
   getCreditCards, upsertCreditCard,
   getCardTransactions, upsertCardTransaction, deleteCardTransaction,
+  deleteCardTransactionsFollowing, updateCategoryForFollowing,
   insertCardTransactions,
   getMonthlyIncomes, upsertMonthlyIncome, toggleIncomeReceived,
 } from "@/lib/queries";
@@ -49,6 +50,8 @@ export default function LancamentosPage() {
   const [loading, setLoading] = useState(false);
   const [billGroupMode, setBillGroupMode] = useState<"quinzena" | "categoria">("quinzena");
   const [txSortByCategory, setTxSortByCategory] = useState<Record<string, boolean>>({});
+  const [isCredit, setIsCredit] = useState(false);
+  const [propagateCategory, setPropagateCategory] = useState(false);
 
   useEffect(() => { loadAll(); }, [month, year]);
 
@@ -148,20 +151,31 @@ export default function LancamentosPage() {
       const perInstallment    = Math.abs(Number(editTx.amount));
       const totalAmount       = perInstallment * totalInstallments;
       const category          = editTx.category ?? null;
+      // Crédito = valor positivo; despesa = negativo
+      const sign = isCredit ? 1 : -1;
 
       if (editTx.id) {
-        // Edição: strip credit_cards (campo de join, não é coluna) e salva
+        // Edição: strip credit_cards (campo de join) e salva
         const { credit_cards: _cc, ...txPayload } = editTx as any;
         await upsertCardTransaction({
           ...txPayload,
           category,
-          amount: -(Math.abs(Number(editTx.amount))),
+          amount: sign * Math.abs(Number(editTx.amount)),
         });
+        // Propaga categoria para parcelas seguintes se solicitado
+        if (propagateCategory && totalInstallments > 1) {
+          await updateCategoryForFollowing({
+            card_id: txPayload.card_id,
+            description: txPayload.description,
+            installment_total: txPayload.installment_total,
+            installment_current: txPayload.installment_current,
+          }, category);
+        }
       } else if (totalInstallments === 1) {
         // Compra à vista
         await upsertCardTransaction({
           card_id: editTx.card_id!, description: editTx.description!,
-          amount: -totalAmount, installment_current: 1, installment_total: 1,
+          amount: sign * totalAmount, installment_current: 1, installment_total: 1,
           month: editTx.month ?? month,
           year:  editTx.year  ?? year,
           category,
@@ -177,7 +191,7 @@ export default function LancamentosPage() {
           const entry = {
             card_id: editTx.card_id!,
             description: editTx.description!,
-            amount: -parseFloat(perInstallment.toFixed(2)),
+            amount: sign * parseFloat(perInstallment.toFixed(2)),
             installment_current: startInst + i,
             installment_total: totalInstallments,
             month: m, year: y,
@@ -190,7 +204,7 @@ export default function LancamentosPage() {
         await insertCardTransactions(parcelas);
       }
 
-      setTxModal(false); setEditTx({});
+      setTxModal(false); setEditTx({}); setIsCredit(false); setPropagateCategory(false);
       await loadAll();
     } catch (err) {
       console.error("Erro ao salvar lançamento:", err);
@@ -200,9 +214,20 @@ export default function LancamentosPage() {
     }
   }
 
-  async function removeTx(id: string) {
+  async function removeTx(tx: CardTransaction) {
     if (!confirm("Remover este lançamento?")) return;
-    await deleteCardTransaction(id);
+    if (tx.installment_total > 1) {
+      const removeAll = confirm(
+        `Parcela ${tx.installment_current}/${tx.installment_total} · "${tx.description}"\n\nOK = remover esta e todas as parcelas seguintes\nCancelar = remover só esta`
+      );
+      if (removeAll) {
+        await deleteCardTransactionsFollowing(tx);
+      } else {
+        await deleteCardTransaction(tx.id);
+      }
+    } else {
+      await deleteCardTransaction(tx.id);
+    }
     await loadAll();
   }
 
@@ -515,12 +540,12 @@ export default function LancamentosPage() {
             {creditCards.map((card) => {
               const isSortedByCat = txSortByCategory[card.id] ?? false;
               const rawTxs = cardTxs.filter(t => t.card_id === card.id);
-              // Ordenação: por categoria (agrupado) ou por data (padrão)
               const txs = isSortedByCat
                 ? [...rawTxs].sort((a, b) =>
                     (a.category ?? "").localeCompare(b.category ?? ""))
                 : rawTxs;
-              const total = rawTxs.reduce((s, t) => s + Math.abs(t.amount), 0);
+              // Total líquido: despesas (negativas) − créditos (positivos)
+              const total = rawTxs.reduce((s, t) => s - t.amount, 0);
               return (
                 <div key={card.id} className="card transition-colors">
                   <div className="flex items-center justify-between mb-3">
@@ -587,17 +612,22 @@ export default function LancamentosPage() {
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium text-red-600">
-                              -{formatCurrency(Math.abs(tx.amount))}
+                            <span className={`text-sm font-medium ${tx.amount > 0 ? "text-emerald-600" : "text-red-600"}`}>
+                              {tx.amount > 0 ? "+" : "-"}{formatCurrency(Math.abs(tx.amount))}
                             </span>
                             <button
-                              onClick={() => { setEditTx({ ...tx, amount: Math.abs(tx.amount) }); setTxModal(true); }}
+                              onClick={() => {
+                                setEditTx({ ...tx, amount: Math.abs(tx.amount) });
+                                setIsCredit(tx.amount > 0);
+                                setPropagateCategory(false);
+                                setTxModal(true);
+                              }}
                               className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg"
                             >
                               <Pencil size={12} className="text-slate-400 dark:text-slate-500" />
                             </button>
                             <button
-                              onClick={() => removeTx(tx.id)}
+                              onClick={() => removeTx(tx)}
                               className="p-1.5 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg"
                             >
                               <Trash2 size={12} className="text-red-400" />
@@ -907,6 +937,17 @@ export default function LancamentosPage() {
             </div>
           </div>
 
+          {/* Crédito / Estorno — apenas novo lançamento */}
+          {!editTx.id && (
+            <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-700/50 rounded-lg px-3 py-2.5">
+              <div>
+                <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Crédito / Estorno</p>
+                <p className="text-xs text-slate-400 dark:text-slate-500">Ative se for reembolso ou saldo positivo no cartão</p>
+              </div>
+              <Toggle checked={isCredit} onChange={v => setIsCredit(v)} />
+            </div>
+          )}
+
           {/* Valor + Parcelas */}
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -990,6 +1031,17 @@ export default function LancamentosPage() {
             <p className="text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-700/50 rounded-lg px-3 py-2">
               Parcela {editTx.installment_current}/{editTx.installment_total} — apenas este mês será alterado
             </p>
+          )}
+
+          {/* Propagar categoria — modo edição, parcelado */}
+          {editTx.id && (editTx.installment_total ?? 1) > 1 && (
+            <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-700/50 rounded-lg px-3 py-2.5">
+              <div>
+                <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Aplicar aos meses seguintes</p>
+                <p className="text-xs text-slate-400 dark:text-slate-500">Propaga a categoria para todas as parcelas seguintes</p>
+              </div>
+              <Toggle checked={propagateCategory} onChange={v => setPropagateCategory(v)} />
+            </div>
           )}
 
           <div className="flex gap-2 pt-2">

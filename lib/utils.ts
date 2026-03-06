@@ -1,9 +1,9 @@
 import { MONTHS } from "@/types";
 import type { FixedBill, CardTransaction } from "@/types";
 
-/** Soma o valor absoluto de todas as transações de cartão. */
+/** Soma o valor líquido das transações (despesas negativas − créditos positivos). */
 export function sumTransactions(txs: CardTransaction[]): number {
-  return txs.reduce((s, t) => s + Math.abs(t.amount), 0);
+  return txs.reduce((s, t) => s - t.amount, 0);
 }
 
 /** Filtra contas que não são dízimo. */

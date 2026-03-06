@@ -16,24 +16,26 @@ import { ChartTooltip } from "@/components/ui/ChartTooltip";
 import {
   getMonthlyIncomes, getMonthlyBillPayments,
   getCardTransactions, getFixedBills, getCreditCards,
-  getMonthlyCardPayments, getIncomeSources,
+  getMonthlyCardPayments, getIncomeSources, getCategories,
 } from "@/lib/queries";
 import { formatCurrency, getMonthName, getCurrentMonth, getAccConfig, computeInstallment } from "@/lib/utils";
 import { MONTH_SHORT } from "@/types";
+import type { Category } from "@/types";
 
-const COLORS = ["#6366f1", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#06b6d4", "#f97316"];
+const FALLBACK_COLORS = ["#6366f1", "#f59e0b", "#10b981", "#8b5cf6", "#06b6d4", "#f97316", "#ec4899", "#14b8a6"];
 
-const PIE_COLORS = {
-  essencial: "#6366f1",
-  outros: "#f59e0b",
-  cartoes: "#ef4444",
-};
+function getCatColor(catName: string, cats: Category[], index: number): string {
+  const cat = cats.find(c => c.name === catName);
+  if (cat?.color) return cat.color;
+  return FALLBACK_COLORS[index % FALLBACK_COLORS.length];
+}
 
 export default function DashboardPage() {
   const { month: cm, year: cy } = getCurrentMonth();
   const [month, setMonth] = useState(cm);
   const [year, setYear] = useState(cy);
   const [loading, setLoading] = useState(true);
+  const [showOnlySaldo, setShowOnlySaldo] = useState(false);
 
   const [totalIncome, setTotalIncome] = useState(0);
   const [totalBills, setTotalBills] = useState(0);
@@ -41,8 +43,8 @@ export default function DashboardPage() {
   const [balance, setBalance] = useState(0);
   const [yearlyData, setYearlyData] = useState<any[]>([]);
   const [pieData, setPieData] = useState<any[]>([]);
+  const [catKeys, setCatKeys] = useState<{ key: string; color: string }[]>([]);
   const [cardsPaid, setCardsPaid] = useState<any[]>([]);
-  const [billsPaid, setBillsPaid] = useState<any[]>([]);
   const [accBalance, setAccBalance] = useState<number | null>(null);
 
   useEffect(() => {
@@ -52,21 +54,18 @@ export default function DashboardPage() {
   async function loadData() {
     setLoading(true);
     try {
-      // Carrega tudo de uma vez — incluindo fontes de renda para o fallback recorrente
-      const [incomes, bills, txs, allBills, cards, cardPayments, incomeSrcs] = await Promise.all([
+      const [incomes, bills, txs, allBills, cards, cardPayments, incomeSrcs, cats] = await Promise.all([
         getMonthlyIncomes(month, year),
         getMonthlyBillPayments(month, year),
         getCardTransactions(month, year),
         getFixedBills(),
         getCreditCards(),
         getMonthlyCardPayments(month, year),
-        getIncomeSources(), // todas as fontes — filtragem por avulsa feita inline
+        getIncomeSources(),
+        getCategories(),
       ]);
 
-      // incomeSrcs = todas as fontes ativas (sem filtro de mês);
-      // a filtragem por avulsa do mês é feita inline abaixo
-
-      // Receita do mês: recorrentes sempre + avulsas só deste mês/ano, com fallback base_amount
+      // ── Receita do mês ────────────────────────────────────────────────────────
       const inc = incomeSrcs.reduce((s, src) => {
         const mi = incomes.find(i => i.source_id === src.id);
         if (src.is_recurring === false) {
@@ -75,18 +74,16 @@ export default function DashboardPage() {
         return s + (mi?.amount ?? src.base_amount);
       }, 0);
 
-      // Separa dízimo das contas regulares
+      // ── Filtra contas ─────────────────────────────────────────────────────────
       const titheBillItem = allBills.find(b => b.is_tithe);
       const regularAllBills = allBills.filter(b => !b.is_tithe);
-
-      // Filtra installment bills fora do intervalo ativo
       const visibleBills = regularAllBills.filter(bill => {
         if (!bill.installment_total) return true;
         if (bill.installment_start_month == null || bill.installment_start_year == null) return true;
         return computeInstallment(bill, month, year) !== null;
       });
 
-      // Merge: pagamentos do mês + contas sem registro (apenas visíveis)
+      // Merge pagamentos + contas sem registro
       const billIds = bills.map(b => b.bill_id);
       const missingBills = visibleBills.filter(b => !billIds.includes(b.id));
       const regularItems: { amount: number; category: string }[] = [
@@ -96,7 +93,7 @@ export default function DashboardPage() {
         ...missingBills.map(b => ({ amount: b.amount, category: b.category })),
       ];
 
-      // Dízimo: usa valor do pagamento se existir, senão computa 10% da renda
+      // Dízimo
       const tithePayment = titheBillItem ? bills.find(b => b.bill_id === titheBillItem.id) : null;
       const titheAmt = tithePayment?.amount ?? (titheBillItem ? inc * 0.1 : 0);
       const titheCategory = titheBillItem?.category ?? "essencial";
@@ -104,42 +101,42 @@ export default function DashboardPage() {
         ? [...regularItems, { amount: titheAmt, category: titheCategory }]
         : regularItems;
 
-      const essencial = allBillsThisMonth.filter(b => b.category === "essencial").reduce((s, b) => s + b.amount, 0);
-      const outros = allBillsThisMonth.filter(b => b.category !== "essencial").reduce((s, b) => s + b.amount, 0);
-      const billsTotal = essencial + outros;
+      // Agrupa por categoria
+      const billsByCat: Record<string, number> = {};
+      allBillsThisMonth.forEach(b => {
+        billsByCat[b.category] = (billsByCat[b.category] ?? 0) + b.amount;
+      });
+      const billsTotal = Object.values(billsByCat).reduce((s, v) => s + v, 0);
 
-      // Cards
-      const cardsTotal = txs.reduce((s, t) => s + Math.abs(t.amount), 0);
+      // Cartões — líquido (créditos abate)
+      const cardsTotal = txs.reduce((s, t) => s - t.amount, 0);
 
       setTotalIncome(inc);
       setTotalBills(billsTotal);
       setTotalCards(cardsTotal);
       setBalance(inc - billsTotal - cardsTotal);
 
-      // Pie chart data
-      setPieData([
-        { name: "Essenciais", value: essencial, color: PIE_COLORS.essencial },
-        { name: "Outros", value: outros, color: PIE_COLORS.outros },
-        { name: "Cartões", value: cardsTotal, color: PIE_COLORS.cartoes },
-      ]);
+      // ── Pie chart: categorias reais + cartões ─────────────────────────────────
+      const pieEntries = Object.entries(billsByCat).map(([catName, value], idx) => ({
+        name: catName.charAt(0).toUpperCase() + catName.slice(1),
+        value,
+        color: getCatColor(catName, cats, idx),
+      }));
+      if (cardsTotal > 0) pieEntries.push({ name: "Cartões", value: cardsTotal, color: "#ef4444" });
+      setPieData(pieEntries);
 
-      // Cards summary
+      // ── Cards summary ─────────────────────────────────────────────────────────
       const cardSummary = cards.map(card => {
         const cardTxs = txs.filter(t => t.card_id === card.id);
-        const total = cardTxs.reduce((s, t) => s + Math.abs(t.amount), 0);
+        const total = cardTxs.reduce((s, t) => s - t.amount, 0);
         const payment = cardPayments.find(p => p.card_id === card.id);
         return { ...card, total, paid: payment?.paid ?? false };
       }).filter(c => c.total > 0);
       setCardsPaid(cardSummary);
 
-      // Bills paid summary
-      const billSummary = allBills.slice(0, 5).map(bill => {
-        const payment = bills.find(b => b.bill_id === bill.id);
-        return { ...bill, paid: payment?.paid ?? false, paidAmount: payment?.amount ?? bill.amount };
-      });
-      setBillsPaid(billSummary);
+      // ── Yearly chart: categorias dinâmicas ───────────────────────────────────
+      const allCatKeys = new Set<string>();
 
-      // Gráfico anual — aplica mesma lógica: installment filter + dízimo dinâmico
       const yearlyPromises = Array.from({ length: 12 }, async (_, i) => {
         const m = i + 1;
         const [inc2, billPay, txs2] = await Promise.all([
@@ -147,7 +144,7 @@ export default function DashboardPage() {
           getMonthlyBillPayments(m, year),
           getCardTransactions(m, year),
         ]);
-        // Per-source: recorrentes sempre + avulsas só do mês m, com fallback base_amount
+
         const income2 = incomeSrcs.reduce((s, src) => {
           const mi = inc2.find(i => i.source_id === src.id);
           if (src.is_recurring === false) {
@@ -156,7 +153,6 @@ export default function DashboardPage() {
           return s + (mi?.amount ?? src.base_amount);
         }, 0);
 
-        // Filtra installments ativos para o mês m
         const visible2 = regularAllBills.filter(bill => {
           if (!bill.installment_total) return true;
           if (bill.installment_start_month == null || bill.installment_start_year == null) return true;
@@ -165,34 +161,53 @@ export default function DashboardPage() {
         const billIds2 = billPay.map(b => b.bill_id);
         const missing2 = visible2.filter(b => !billIds2.includes(b.id));
 
-        // Dízimo anual: usa pagamento se existir, senão 10% da renda do mês
         const tithePay2 = titheBillItem ? billPay.find(b => b.bill_id === titheBillItem.id) : null;
         const titheAmt2 = tithePay2?.amount ?? (titheBillItem ? income2 * 0.1 : 0);
         const titheCategory2 = titheBillItem?.category ?? "essencial";
 
-        // Agrupa despesas por categoria para o gráfico empilhado
-        const billsWithCats2 = [
+        const billsWithCats2: { amount: number; category: string }[] = [
           ...billPay
             .filter(b => visible2.some(vb => vb.id === b.bill_id))
             .map(b => ({ amount: b.amount ?? b.fixed_bills?.amount ?? 0, category: b.fixed_bills?.category ?? "outros" })),
           ...missing2.map(b => ({ amount: b.amount, category: b.category })),
         ];
-        const essenciais2 = billsWithCats2.filter(b => b.category === "essencial").reduce((s, b) => s + b.amount, 0)
-          + (titheCategory2 === "essencial" ? titheAmt2 : 0);
-        const outros2 = billsWithCats2.filter(b => b.category !== "essencial").reduce((s, b) => s + b.amount, 0)
-          + (titheCategory2 !== "essencial" ? titheAmt2 : 0);
-        const cards2 = txs2.reduce((s, t) => s + Math.abs(t.amount), 0);
-        const despesas2 = essenciais2 + outros2 + cards2;
-        return { name: MONTH_SHORT[i], receitas: income2, essenciais: essenciais2, outros: outros2, cartoes: cards2, despesas: despesas2 };
-      });
-      const yd = await Promise.all(yearlyPromises);
+        if (titheBillItem) billsWithCats2.push({ amount: titheAmt2, category: titheCategory2 });
 
-      // Calcula saldo acumulado mês a mês (carry-over encadeado) com base na config
+        const catTotals2: Record<string, number> = {};
+        billsWithCats2.forEach(b => {
+          catTotals2[b.category] = (catTotals2[b.category] ?? 0) + b.amount;
+          allCatKeys.add(b.category);
+        });
+
+        const cards2 = txs2.reduce((s, t) => s - t.amount, 0);
+        const despesas2 = Object.values(catTotals2).reduce((s, v) => s + v, 0) + cards2;
+
+        return {
+          name: MONTH_SHORT[i],
+          receitas: income2,
+          ...catTotals2,
+          cartoes: cards2,
+          despesas: despesas2,
+        };
+      });
+
+      const ydRaw = await Promise.all(yearlyPromises);
+
+      // Garante que todos os meses têm todos os keys de categoria (preenche 0)
+      const finalCatKeys = Array.from(allCatKeys);
+      const yd = ydRaw.map(d => {
+        const row = { ...d } as any;
+        finalCatKeys.forEach(k => { if (row[k] === undefined) row[k] = 0; });
+        return row;
+      });
+
+      setCatKeys(finalCatKeys.map((k, i) => ({ key: k, color: getCatColor(k, cats, i) })));
+
+      // Saldo acumulado
       const accCfg = getAccConfig();
       let running = accCfg.saldoInicial;
       const ydWithAcc = yd.map((d, i) => {
         const m = i + 1;
-        // Ignora meses antes do início configurado (mesmo ano)
         if (accCfg.startYear === year && m < accCfg.startMonth) {
           return { ...d, saldoAcumulado: null as unknown as number };
         }
@@ -201,7 +216,6 @@ export default function DashboardPage() {
       });
       setYearlyData(ydWithAcc);
 
-      // Saldo acumulado do mês selecionado (para o card de resumo)
       const monthAcc = ydWithAcc[month - 1]?.saldoAcumulado ?? null;
       setAccBalance(typeof monthAcc === "number" ? monthAcc : null);
 
@@ -241,7 +255,7 @@ export default function DashboardPage() {
           value={totalBills}
           icon={TrendingDown}
           variant="expense"
-          subtitle="Essenciais + outros"
+          subtitle="Todas as categorias"
         />
         <SummaryCard
           title="Faturas Cartões"
@@ -265,26 +279,62 @@ export default function DashboardPage() {
 
       {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
-        {/* Bar Chart - 12 months */}
-        <div className="xl:col-span-2 card transition-colors">
-          <h3 className="font-semibold text-slate-700 dark:text-slate-200 mb-4 text-sm">
-            Receitas vs Despesas — {year}
-          </h3>
+        {/* Bar + Line Chart */}
+        <div className="lg:col-span-2 card transition-colors">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-slate-700 dark:text-slate-200 text-sm">
+              Receitas vs Despesas — {year}
+            </h3>
+            {/* Toggle Tudo / Saldo */}
+            <div className="flex bg-slate-100 dark:bg-slate-700/60 rounded-lg p-0.5 text-xs">
+              <button
+                onClick={() => setShowOnlySaldo(false)}
+                className={`px-2.5 py-1 rounded-md font-medium transition-all ${
+                  !showOnlySaldo
+                    ? "bg-white dark:bg-slate-600 text-slate-700 dark:text-slate-100 shadow-sm"
+                    : "text-slate-500 dark:text-slate-400"
+                }`}
+              >Tudo</button>
+              <button
+                onClick={() => setShowOnlySaldo(true)}
+                className={`px-2.5 py-1 rounded-md font-medium transition-all ${
+                  showOnlySaldo
+                    ? "bg-white dark:bg-slate-600 text-slate-700 dark:text-slate-100 shadow-sm"
+                    : "text-slate-500 dark:text-slate-400"
+                }`}
+              >Saldo</button>
+            </div>
+          </div>
           <ResponsiveContainer width="100%" height={220}>
             <ComposedChart data={yearlyData} margin={{ top: 5, right: 45, left: 5, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
               <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#94a3b8" }} />
               <YAxis yAxisId="left" tick={{ fontSize: 11, fill: "#94a3b8" }}
-                tickFormatter={(v) => `R$${(v / 1000).toFixed(0)}k`} />
+                tickFormatter={(v) => `R$${(v / 1000).toFixed(0)}k`}
+                domain={['auto', 'auto']} />
               <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11, fill: "#94a3b8" }}
-                tickFormatter={(v) => `R$${(v / 1000).toFixed(0)}k`} />
+                tickFormatter={(v) => `R$${(v / 1000).toFixed(0)}k`}
+                domain={['auto', 'auto']} />
               <Tooltip content={<ChartTooltip />} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               <ReferenceLine yAxisId="right" y={0} stroke="#94a3b8" strokeDasharray="4 4" />
-              <Bar yAxisId="left" dataKey="receitas" name="Receitas" fill="#10b981" stackId="r" radius={[4, 4, 0, 0]} />
-              <Bar yAxisId="left" dataKey="essenciais" name="Essenciais" fill="#6366f1" stackId="d" radius={[0, 0, 0, 0]} />
-              <Bar yAxisId="left" dataKey="outros" name="Outros" fill="#f59e0b" stackId="d" radius={[0, 0, 0, 0]} />
-              <Bar yAxisId="left" dataKey="cartoes" name="Cartões" fill="#ef4444" stackId="d" radius={[4, 4, 0, 0]} />
+              {!showOnlySaldo && (
+                <>
+                  <Bar yAxisId="left" dataKey="receitas" name="Receitas" fill="#10b981" stackId="r" radius={[4, 4, 0, 0]} />
+                  {catKeys.map(({ key, color }) => (
+                    <Bar
+                      key={key}
+                      yAxisId="left"
+                      dataKey={key}
+                      name={key.charAt(0).toUpperCase() + key.slice(1)}
+                      fill={color}
+                      stackId="d"
+                      radius={[0, 0, 0, 0]}
+                    />
+                  ))}
+                  <Bar yAxisId="left" dataKey="cartoes" name="Cartões" fill="#ef4444" stackId="d" radius={[4, 4, 0, 0]} />
+                </>
+              )}
               <Line
                 yAxisId="right"
                 type="monotone"
@@ -351,10 +401,7 @@ export default function DashboardPage() {
                 <div key={card.id}
                   className="flex items-center justify-between py-2 border-b border-slate-50 dark:border-slate-700/30 last:border-0">
                   <div className="flex items-center gap-2.5">
-                    <div
-                      className="w-2.5 h-2.5 rounded-full"
-                      style={{ backgroundColor: card.color }}
-                    />
+                    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: card.color }} />
                     <div>
                       <p className="text-sm font-medium text-slate-700 dark:text-slate-200">{card.name}</p>
                       <p className="text-xs text-slate-400 dark:text-slate-500">Vence dia {card.due_day}</p>
@@ -378,14 +425,13 @@ export default function DashboardPage() {
           )}
         </div>
 
-        {/* Progress Bars */}
+        {/* Progress Bars / Resumo */}
         <div className="card transition-colors">
           <h3 className="font-semibold text-slate-700 dark:text-slate-200 mb-3 text-sm flex items-center gap-2">
             <Calendar size={15} className="text-slate-500 dark:text-slate-400" />
             Resumo Financeiro
           </h3>
           <div className="space-y-3">
-            {/* Income progress */}
             <div>
               <div className="flex justify-between mb-1">
                 <span className="text-xs text-slate-500 dark:text-slate-400">Receitas</span>
@@ -395,8 +441,6 @@ export default function DashboardPage() {
                 <div className="h-2 bg-emerald-500 rounded-full" style={{ width: "100%" }} />
               </div>
             </div>
-
-            {/* Bills progress */}
             <div>
               <div className="flex justify-between mb-1">
                 <span className="text-xs text-slate-500 dark:text-slate-400">Contas</span>
@@ -409,8 +453,6 @@ export default function DashboardPage() {
                 />
               </div>
             </div>
-
-            {/* Cards progress */}
             <div>
               <div className="flex justify-between mb-1">
                 <span className="text-xs text-slate-500 dark:text-slate-400">Faturas Cartões</span>
@@ -423,8 +465,6 @@ export default function DashboardPage() {
                 />
               </div>
             </div>
-
-            {/* Balance */}
             <div className="pt-2 mt-2 border-t border-slate-100 dark:border-slate-700/50">
               <div className="flex justify-between items-center">
                 <span className="text-sm font-medium text-slate-600 dark:text-slate-300">Saldo Final</span>

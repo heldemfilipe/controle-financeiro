@@ -114,7 +114,7 @@ export default function GastosMensaisPage() {
       cards.forEach(c => {
         totals[c.id] = txs
           .filter(t => t.card_id === c.id)
-          .reduce((s, t) => s + Math.abs(t.amount), 0);
+          .reduce((s, t) => s - t.amount, 0); // despesas negativas → subtrai; créditos positivos → abate
       });
       setCardTotals(totals);
 
@@ -165,7 +165,7 @@ export default function GastosMensaisPage() {
               ...billPay.map(b => b.amount ?? (b as any).fixed_bills?.amount ?? activeBills.find(f => f.id === b.bill_id)?.amount ?? 0),
               ...missingBills2.map(b => b.amount),
             ].reduce((s, v) => s + v, 0);
-            const cards2 = txs2.reduce((s, t) => s + Math.abs(t.amount), 0);
+            const cards2 = txs2.reduce((s, t) => s - t.amount, 0);
             return inc2 - bills2 - cards2;
           })
         );
@@ -443,8 +443,8 @@ export default function GastosMensaisPage() {
                       </span>
                     )}
                   </div>
-                  <span className="text-xs font-semibold text-red-500 shrink-0">
-                    -{formatCurrency(Math.abs(tx.amount))}
+                  <span className={`text-xs font-semibold shrink-0 ${tx.amount > 0 ? "text-emerald-500" : "text-red-500"}`}>
+                    {tx.amount > 0 ? "+" : "-"}{formatCurrency(Math.abs(tx.amount))}
                   </span>
                 </div>
               ))

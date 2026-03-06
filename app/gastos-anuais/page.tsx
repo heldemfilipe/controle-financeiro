@@ -46,8 +46,8 @@ export default function GastosAnuaisPage() {
       const allBills = await getFixedBills();
       const sources = await getIncomeSources();
 
-      let saldoAcumulado = 0;
-      const months = await Promise.all(
+      // Carrega os 12 meses em paralelo (sem acumular saldo — race condition)
+      const rawMonths = await Promise.all(
         Array.from({ length: 12 }, async (_, i) => {
           const month = i + 1;
           const [incomes, billPays, txs] = await Promise.all([
@@ -60,7 +60,6 @@ export default function GastosAnuaisPage() {
           const receitas = sources.reduce((s, src) => {
             const mi = incomes.find(i => i.source_id === src.id);
             if (src.is_recurring === false) {
-              // Inclui apenas se for avulsa deste mês/ano específico
               if (src.one_time_month !== month || src.one_time_year !== year) return s;
               return s + (mi?.amount ?? src.base_amount);
             }
@@ -89,8 +88,6 @@ export default function GastosAnuaisPage() {
           const cartoes = txs.reduce((s, t) => s - t.amount, 0);
 
           const despesas = essenciais + outros + cartoes;
-          saldoAcumulado += (receitas - despesas);
-
           return {
             month,
             name: MONTH_SHORT[i],
@@ -100,10 +97,17 @@ export default function GastosAnuaisPage() {
             cartoes,
             despesas,
             saldo: receitas - despesas,
-            saldoAcumulado,
+            saldoAcumulado: 0, // calculado abaixo, após Promise.all
           };
         })
       );
+
+      // Calcula saldoAcumulado sequencialmente (Promise.all preserva a ordem Jan→Dez)
+      let acc = 0;
+      const months = rawMonths.map(m => {
+        acc += m.saldo;
+        return { ...m, saldoAcumulado: acc };
+      });
       setData(months);
     } finally {
       setLoading(false);

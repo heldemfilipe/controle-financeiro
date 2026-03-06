@@ -9,7 +9,7 @@ import { Toggle } from "@/components/ui/Toggle";
 import {
   getIncomeSources, upsertIncomeSource, deleteIncomeSource,
   getFixedBills, upsertFixedBill, deleteFixedBill,
-  getCategories, upsertCategory, deleteCategory,
+  getCategories,
   getCreditCards, upsertCreditCard,
   getCardTransactions, upsertCardTransaction, deleteCardTransaction,
   insertCardTransactions,
@@ -19,7 +19,7 @@ import { MONTHS } from "@/types";
 import { formatCurrency, getCurrentMonth, installmentEndDate, computeInstallment } from "@/lib/utils";
 import type {
   IncomeSource, FixedBill, CreditCard as CreditCardType,
-  CardTransaction, MonthlyIncome, Category,
+  CardTransaction, MonthlyIncome,
 } from "@/types";
 
 type Tab = "receitas" | "contas" | "cartoes";
@@ -42,12 +42,10 @@ export default function LancamentosPage() {
   const [billModal,   setBillModal]   = useState(false);
   const [cardModal,   setCardModal]   = useState(false);
   const [txModal,     setTxModal]     = useState(false);
-  const [catModal,    setCatModal]    = useState(false);
   const [editIncome, setEditIncome] = useState<Partial<IncomeSource>>({});
   const [editBill,   setEditBill]   = useState<Partial<FixedBill>>({});
   const [editCard,   setEditCard]   = useState<Partial<CreditCardType>>({});
   const [editTx,     setEditTx]     = useState<Partial<CardTransaction>>({});
-  const [editCat,    setEditCat]    = useState<Partial<Category>>({});
   const [loading, setLoading] = useState(false);
   const [billGroupMode, setBillGroupMode] = useState<"quinzena" | "categoria">("quinzena");
   const [txSortByCategory, setTxSortByCategory] = useState<Record<string, boolean>>({});
@@ -69,21 +67,6 @@ export default function LancamentosPage() {
     setCreditCards(cards);
     setCardTxs(txs);
     setMonthlyIncomes(incomes);
-  }
-
-  // ── Categories ───────────────────────────────────────────────────────────────
-  async function saveCat() {
-    if (!editCat.name) return;
-    setLoading(true);
-    await upsertCategory({ color: "#6366f1", active: true, ...editCat });
-    setCatModal(false); setEditCat({});
-    await loadAll(); setLoading(false);
-  }
-
-  async function removeCat(id: string) {
-    if (!confirm("Remover esta categoria? As contas mantêm o nome.")) return;
-    await deleteCategory(id);
-    await loadAll();
   }
 
   // ── Income ──────────────────────────────────────────────────────────────────
@@ -406,21 +389,12 @@ export default function LancamentosPage() {
                 </button>
               </div>
             </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => { setEditCat({}); setCatModal(true); }}
-                className="btn-secondary flex items-center gap-1.5"
-                title="Gerenciar categorias"
-              >
-                <Plus size={14} /> Categoria
-              </button>
-              <button
-                onClick={() => { setEditBill({}); setBillModal(true); }}
-                className="btn-primary flex items-center gap-1.5"
-              >
-                <Plus size={14} /> Nova Conta
-              </button>
-            </div>
+            <button
+              onClick={() => { setEditBill({}); setBillModal(true); }}
+              className="btn-primary flex items-center gap-1.5"
+            >
+              <Plus size={14} /> Nova Conta
+            </button>
           </div>
 
           <div className="space-y-4">
@@ -828,41 +802,6 @@ export default function LancamentosPage() {
             <button onClick={() => { setBillModal(false); setEditBill({}); }}
               className="btn-secondary flex-1">Cancelar</button>
             <button onClick={saveBill} disabled={loading}
-              className="btn-primary flex-1">Salvar</button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* ── MODAL: Nova Categoria ── */}
-      <Modal open={catModal} onClose={() => { setCatModal(false); setEditCat({}); }}
-        title={editCat.id ? "Editar Categoria" : "Nova Categoria"} size="sm">
-        <div className="space-y-3">
-          <div>
-            <label className="label">Nome</label>
-            <input className="input" placeholder="Ex: Lazer, Saúde…"
-              value={editCat.name ?? ""}
-              onChange={e => setEditCat(p => ({ ...p, name: e.target.value }))} />
-          </div>
-          <div>
-            <label className="label">Cor</label>
-            <div className="flex items-center gap-3">
-              <input className="h-10 w-16 rounded-lg border border-slate-200 dark:border-slate-600 cursor-pointer"
-                type="color" value={editCat.color ?? "#6366f1"}
-                onChange={e => setEditCat(p => ({ ...p, color: e.target.value }))} />
-              <div className="flex-1 bg-slate-50 dark:bg-slate-700/50 rounded-lg px-3 py-2">
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: editCat.color ?? "#6366f1" }} />
-                  <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
-                    {editCat.name || "Prévia"}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div className="flex gap-2 pt-2">
-            <button onClick={() => { setCatModal(false); setEditCat({}); }}
-              className="btn-secondary flex-1">Cancelar</button>
-            <button onClick={saveCat} disabled={loading}
               className="btn-primary flex-1">Salvar</button>
           </div>
         </div>

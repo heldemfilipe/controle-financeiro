@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import {
   LayoutDashboard, PlusCircle, CalendarDays, CreditCard,
   TrendingUp, DollarSign, BarChart2, AreaChart, Settings,
-  Sun, Moon, PieChart, LogOut, User,
+  Sun, Moon, PieChart, LogOut, User, Tag,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/components/providers/ThemeProvider";
@@ -38,6 +38,7 @@ const navGroups = [
   {
     label: "Sistema",
     items: [
+      { href: "/categorias", label: "Categorias", icon: Tag },
       { href: "/configuracoes", label: "Configurações", icon: Settings },
     ],
   },

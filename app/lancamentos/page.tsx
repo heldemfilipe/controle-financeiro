@@ -19,7 +19,7 @@ import { MONTHS } from "@/types";
 import { formatCurrency, getCurrentMonth, installmentEndDate, computeInstallment } from "@/lib/utils";
 import type {
   IncomeSource, FixedBill, CreditCard as CreditCardType,
-  CardTransaction, MonthlyIncome,
+  CardTransaction, MonthlyIncome, Category,
 } from "@/types";
 
 type Tab = "receitas" | "contas" | "cartoes";

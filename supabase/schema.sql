@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS card_transactions (
   installment_total   INTEGER DEFAULT 1,
   month               INTEGER NOT NULL,
   year                INTEGER NOT NULL,
+  category            TEXT,
   created_at          TIMESTAMPTZ DEFAULT NOW()
 );
 

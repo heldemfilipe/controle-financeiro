@@ -211,10 +211,14 @@ export default function GastosMensaisPage() {
   }
 
   // Separação por quinzena (usando apenas contas no range de parcelas ativo)
-  const q1Bills = visibleRegularBills.filter(b => b.period === "1-15");
-  const q2Bills = visibleRegularBills.filter(b => b.period === "16-30");
-  const q1Cards = creditCards.filter(c => c.due_day <= 15);
-  const q2Cards = creditCards.filter(c => c.due_day > 15);
+  // Pré-ordenadas por dia de vencimento para exibição correta
+  const sortByDue = <T extends { due_day?: number | null }>(arr: T[]) =>
+    [...arr].sort((a, b) => (a.due_day ?? 99) - (b.due_day ?? 99));
+
+  const q1Bills = sortByDue(visibleRegularBills.filter(b => b.period === "1-15"));
+  const q2Bills = sortByDue(visibleRegularBills.filter(b => b.period === "16-30"));
+  const q1Cards = sortByDue(creditCards.filter(c => c.due_day <= 15));
+  const q2Cards = sortByDue(creditCards.filter(c => c.due_day > 15));
 
   const tithePayment      = titheBill ? billPayments.find(p => p.bill_id === titheBill.id) : undefined;
   const titheDisplayAmt   = tithePayment?.amount ?? tithe.total;
@@ -469,7 +473,15 @@ export default function GastosMensaisPage() {
     const cardsSum = cards.reduce((s, c) => s + (cardTotals[c.id] ?? 0), 0);
 
     // Agrupamento dinâmico por categoria (suporta categorias customizadas)
-    const catGroups = Array.from(new Set(bills.map(b => b.category || "outros")));
+    // Ordena os grupos pela menor due_day de qualquer conta naquele grupo
+    const catGroups = Array.from(new Set(bills.map(b => b.category || "outros")))
+      .sort((a, b) => {
+        const minA = Math.min(...bills.filter(x => (x.category || "outros") === a).map(x => x.due_day ?? 99));
+        const minB = Math.min(...bills.filter(x => (x.category || "outros") === b).map(x => x.due_day ?? 99));
+        return minA - minB;
+      });
+    // Ordena cartões por due_day dentro da quinzena
+    const sortedCards = [...cards].sort((a, b) => (a.due_day ?? 99) - (b.due_day ?? 99));
 
     return (
       <div>
@@ -504,7 +516,9 @@ export default function GastosMensaisPage() {
             ) : (
               <div className="space-y-3">
                 {catGroups.map(cat => {
-                  const catBills = bills.filter(b => (b.category || "outros") === cat);
+                  const catBills = bills
+                    .filter(b => (b.category || "outros") === cat)
+                    .sort((a, b) => (a.due_day ?? 99) - (b.due_day ?? 99));
                   if (catBills.length === 0) return null;
                   const isEssencial = cat === "essencial";
                   return (
@@ -547,7 +561,7 @@ export default function GastosMensaisPage() {
               </p>
             ) : (
               <div className="space-y-2">
-                {cards.map(c => <CardRow key={c.id} card={c} />)}
+                {sortedCards.map(c => <CardRow key={c.id} card={c} />)}
                 <div className="pt-2 border-t border-slate-100 dark:border-slate-700/50 flex justify-between">
                   <span className="text-xs text-slate-500 dark:text-slate-400">
                     {cards.filter(c => cardPayments.find(p => p.card_id === c.id)?.paid).length}/{cards.filter(c => (cardTotals[c.id] ?? 0) > 0).length} pagas

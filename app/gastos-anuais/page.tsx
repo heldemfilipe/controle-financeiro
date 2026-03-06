@@ -83,7 +83,7 @@ export default function GastosAnuaisPage() {
             ...missingBills.map(b => ({ amount: b.amount, category: b.category })),
           ];
           const essenciais = allMonthBills.filter(b => b.category === "essencial").reduce((s, b) => s + b.amount, 0);
-          const outros = allMonthBills.filter(b => b.category === "outros").reduce((s, b) => s + b.amount, 0);
+          const outros = allMonthBills.filter(b => b.category !== "essencial").reduce((s, b) => s + b.amount, 0);
 
           // Cartões
           const cartoes = txs.reduce((s, t) => s + Math.abs(t.amount), 0);

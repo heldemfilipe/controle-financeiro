@@ -105,7 +105,7 @@ export default function DashboardPage() {
         : regularItems;
 
       const essencial = allBillsThisMonth.filter(b => b.category === "essencial").reduce((s, b) => s + b.amount, 0);
-      const outros = allBillsThisMonth.filter(b => b.category === "outros").reduce((s, b) => s + b.amount, 0);
+      const outros = allBillsThisMonth.filter(b => b.category !== "essencial").reduce((s, b) => s + b.amount, 0);
       const billsTotal = essencial + outros;
 
       // Cards

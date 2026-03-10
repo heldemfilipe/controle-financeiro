@@ -348,16 +348,29 @@ export default function GastosMensaisPage() {
     const payment  = cardPayments.find(p => p.card_id === card.id);
     const txs      = cardTransactions.filter(t => t.card_id === card.id);
     const isOpen   = expandedCard === card.id;
-
-    // Quantas são parceladas (installment_total > 1)
+    const soon     = status === "pending" && total > 0 && isDueSoon(card.due_day, month, year);
     const parcelCount = txs.filter(t => t.installment_total > 1).length;
 
+    const cardBg = total > 0 && status === "overdue"
+      ? "bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800/40"
+      : total > 0 && soon
+        ? "bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/40"
+        : "bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/50";
+
+    const dayBadge = total > 0 && status === "overdue"
+      ? "bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400"
+      : total > 0 && soon
+        ? "bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400"
+        : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400";
+
+    const barColor = total > 0 && status === "overdue" ? "#ef4444"
+      : total > 0 && soon ? "#f59e0b"
+      : card.color;
+
     return (
-      <div className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/50 rounded-xl shadow-sm overflow-hidden">
-        {/* Cabeçalho do cartão */}
+      <div className={`rounded-xl shadow-sm overflow-hidden ${cardBg}`}>
         <div className="p-3">
           <div className="flex items-center justify-between">
-            {/* Info + botão expandir */}
             <button
               className="flex items-center gap-2.5 flex-1 min-w-0 text-left"
               onClick={() => setExpandedCard(isOpen ? null : card.id)}
@@ -370,11 +383,12 @@ export default function GastosMensaisPage() {
               </div>
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 truncate">{card.name}</p>
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 flex-wrap">
                   <span className="text-xs text-slate-400 dark:text-slate-500 capitalize">{card.owner}</span>
-                  <span className="text-xs bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-1.5 py-0.5 rounded font-medium">
+                  <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${dayBadge}`}>
                     Dia {card.due_day}
                   </span>
+                  {soon && <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">· vence em breve</span>}
                   {txs.length > 0 && (
                     <span className="text-xs text-slate-400 dark:text-slate-500">
                       {txs.length} lanç.{parcelCount > 0 && ` · ${parcelCount} parc.`}
@@ -384,12 +398,11 @@ export default function GastosMensaisPage() {
               </div>
               {txs.length > 0 && (
                 isOpen
-                  ? <ChevronDown size={14} className="text-slate-400 dark:text-slate-500 shrink-0 ml-1" />
-                  : <ChevronRight size={14} className="text-slate-400 dark:text-slate-500 shrink-0 ml-1" />
+                  ? <ChevronDown size={14} className="text-slate-400 shrink-0 ml-1" />
+                  : <ChevronRight size={14} className="text-slate-400 shrink-0 ml-1" />
               )}
             </button>
 
-            {/* Valor + toggle */}
             <div className="flex items-center gap-2.5 shrink-0 ml-2">
               <div className="text-right">
                 <p className={`text-sm font-bold ${total > 0 ? "text-slate-800 dark:text-slate-100" : "text-slate-400 dark:text-slate-600"}`}>
@@ -398,27 +411,22 @@ export default function GastosMensaisPage() {
                 {status === "paid" ? (
                   <p className="text-xs text-emerald-600">✓ Pago</p>
                 ) : status === "overdue" && total > 0 ? (
-                  <p className="text-xs text-red-500">Vencida</p>
+                  <p className="text-xs text-red-500 font-medium">Vencida!</p>
+                ) : soon ? (
+                  <p className="text-xs text-amber-600 font-medium">Vence em breve</p>
                 ) : total > 0 ? (
                   <p className="text-xs text-slate-400 dark:text-slate-500">Pendente</p>
                 ) : null}
               </div>
-              <Toggle
-                checked={payment?.paid ?? false}
-                onChange={v => handleToggleCard(card, v)}
-                disabled={total === 0}
-              />
+              <Toggle checked={payment?.paid ?? false} onChange={v => handleToggleCard(card, v)} disabled={total === 0} />
             </div>
           </div>
 
-          {/* Barra de progresso */}
           {total > 0 && incomeTotal > 0 && (
-            <div className="mt-2.5">
+            <div className="mt-2">
               <div className="h-1 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
-                <div
-                  className="h-1 rounded-full transition-all"
-                  style={{ width: `${Math.min((total / incomeTotal) * 100, 100)}%`, backgroundColor: card.color }}
-                />
+                <div className="h-1 rounded-full transition-all"
+                  style={{ width: `${Math.min((total / incomeTotal) * 100, 100)}%`, backgroundColor: barColor }} />
               </div>
               <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
                 {((total / incomeTotal) * 100).toFixed(1)}% da renda
@@ -427,32 +435,23 @@ export default function GastosMensaisPage() {
           )}
         </div>
 
-        {/* Lista de parcelas — expande ao clicar */}
         {isOpen && (
           <div className="border-t border-slate-100 dark:border-slate-700/50 bg-slate-50 dark:bg-slate-800/60 px-3 py-2 space-y-1.5">
             {txs.length === 0 ? (
-              <p className="text-xs text-slate-400 dark:text-slate-500 py-1 text-center">
-                Nenhum lançamento neste mês
-              </p>
-            ) : (
-              txs.map(tx => (
-                <div key={tx.id} className="flex items-center justify-between gap-2">
-                  <div className="min-w-0">
-                    <span className="text-xs text-slate-600 dark:text-slate-300 truncate block">
-                      {tx.description}
-                    </span>
-                    {tx.installment_total > 1 && (
-                      <span className="text-xs text-violet-600 dark:text-violet-400 font-medium">
-                        {tx.installment_current}/{tx.installment_total}x
-                      </span>
-                    )}
-                  </div>
-                  <span className={`text-xs font-semibold shrink-0 ${tx.amount > 0 ? "text-emerald-500" : "text-red-500"}`}>
-                    {tx.amount > 0 ? "+" : "-"}{formatCurrency(Math.abs(tx.amount))}
-                  </span>
+              <p className="text-xs text-slate-400 py-1 text-center">Nenhum lançamento neste mês</p>
+            ) : txs.map(tx => (
+              <div key={tx.id} className="flex items-center justify-between gap-2 py-0.5">
+                <div className="min-w-0 flex-1">
+                  <span className="text-xs text-slate-600 dark:text-slate-300 truncate block">{tx.description}</span>
+                  {tx.installment_total > 1 && (
+                    <span className="text-xs text-violet-500 font-medium">{tx.installment_current}/{tx.installment_total}x</span>
+                  )}
                 </div>
-              ))
-            )}
+                <span className={`text-xs font-semibold shrink-0 ${tx.amount > 0 ? "text-emerald-500" : "text-slate-600 dark:text-slate-300"}`}>
+                  {tx.amount > 0 ? "+" : "-"}{formatCurrency(Math.abs(tx.amount))}
+                </span>
+              </div>
+            ))}
           </div>
         )}
       </div>
@@ -687,38 +686,38 @@ export default function GastosMensaisPage() {
   // ── Render principal ───────────────────────────────────────────────────────
 
   return (
-    <div className="p-4 md:p-6 min-h-screen">
+    <div className="p-3 md:p-6 min-h-screen">
       <PageHeader title="Gastos Mensais" subtitle="Controle de pagamentos por quinzena">
         <MonthSelector month={month} year={year}
           onChange={(m, y) => { setMonth(m); setYear(y); }} />
       </PageHeader>
 
-      {/* Barra de resumo */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 mb-3">
-        <div className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/50 rounded-xl p-3.5 transition-colors">
-          <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Receitas</p>
-          <p className="text-lg font-bold text-emerald-600">+{formatCurrency(incomeTotal)}</p>
-        </div>
-        <div className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/50 rounded-xl p-3.5 transition-colors">
-          <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">1ª Quinzena</p>
-          <p className="text-lg font-bold text-primary-600">-{formatCurrency(q1Total)}</p>
-          <p className="text-xs text-slate-400 dark:text-slate-500">dias 1 – 15</p>
-        </div>
-        <div className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/50 rounded-xl p-3.5 transition-colors">
-          <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">2ª Quinzena</p>
-          <p className="text-lg font-bold text-amber-600">-{formatCurrency(q2Total)}</p>
-          <p className="text-xs text-slate-400 dark:text-slate-500">dias 16 – 30</p>
-        </div>
-        {(() => {
-          const accBalance = prevBalance + balance;
-          return (
-            <div className={`rounded-xl p-3.5 border transition-colors ${
+      {/* Barra de resumo — 2×2 no mobile */}
+      {(() => {
+        const accBalance = prevBalance + balance;
+        return (
+          <div className="grid grid-cols-2 xl:grid-cols-4 gap-2 mb-3">
+            <div className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/50 rounded-xl p-3 transition-colors">
+              <p className="text-xs text-slate-500 dark:text-slate-400 mb-0.5">Receitas</p>
+              <p className="text-base font-bold text-emerald-600">+{formatCurrency(incomeTotal)}</p>
+            </div>
+            <div className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/50 rounded-xl p-3 transition-colors">
+              <p className="text-xs text-slate-500 dark:text-slate-400 mb-0.5">1ª Quinzena</p>
+              <p className="text-base font-bold text-primary-600">-{formatCurrency(q1Total)}</p>
+              <p className="text-xs text-slate-400 dark:text-slate-500">dias 1–15</p>
+            </div>
+            <div className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/50 rounded-xl p-3 transition-colors">
+              <p className="text-xs text-slate-500 dark:text-slate-400 mb-0.5">2ª Quinzena</p>
+              <p className="text-base font-bold text-amber-600">-{formatCurrency(q2Total)}</p>
+              <p className="text-xs text-slate-400 dark:text-slate-500">dias 16–30</p>
+            </div>
+            <div className={`rounded-xl p-3 border transition-colors ${
               accBalance >= 0
                 ? "bg-emerald-50 dark:bg-emerald-900/20 border-emerald-100 dark:border-emerald-800/30"
                 : "bg-red-50 dark:bg-red-900/20 border-red-100 dark:border-red-800/30"
             }`}>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Saldo acumulado</p>
-              <p className={`text-lg font-bold ${accBalance >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mb-0.5">Saldo acum.</p>
+              <p className={`text-base font-bold ${accBalance >= 0 ? "text-emerald-600" : "text-red-600"}`}>
                 {accBalance >= 0 ? "+" : ""}{formatCurrency(accBalance)}
               </p>
               {prevBalance !== 0 && (
@@ -727,9 +726,9 @@ export default function GastosMensaisPage() {
                 </p>
               )}
             </div>
-          );
-        })()}
-      </div>
+          </div>
+        );
+      })()}
 
       {/* Carry-over: saldo acumulado com base na config */}
       {(() => {
@@ -749,49 +748,30 @@ export default function GastosMensaisPage() {
         })();
 
         return (
-          <div className={`flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl px-4 py-2.5 mb-6 text-sm border transition-colors ${
+          <div className={`flex items-center justify-between rounded-xl px-3 py-2 mb-5 border transition-colors ${
             accBalance >= 0
               ? "bg-emerald-50 dark:bg-emerald-900/10 border-emerald-100 dark:border-emerald-800/20"
               : "bg-red-50 dark:bg-red-900/10 border-red-100 dark:border-red-800/20"
           }`}>
-            {/* Saldo inicial personalizado */}
-            {accConfig.saldoInicial !== 0 && !prevPeriodLabel && (
-              <>
-                <span className="text-slate-500 dark:text-slate-400 text-xs">Saldo inicial:</span>
-                <span className={`font-semibold text-sm ${accConfig.saldoInicial >= 0 ? "text-emerald-600" : "text-red-500"}`}>
-                  {accConfig.saldoInicial >= 0 ? "+" : ""}{formatCurrency(accConfig.saldoInicial)}
-                </span>
-                <span className="text-slate-300 dark:text-slate-600">+</span>
-              </>
-            )}
-
-            {/* Meses anteriores acumulados */}
-            {prevPeriodLabel && (
-              <>
-                <span className="text-slate-500 dark:text-slate-400 text-xs">
-                  Acumulado ({prevPeriodLabel}):
-                </span>
-                <span className={`font-semibold text-sm ${prevBalance >= 0 ? "text-emerald-600" : "text-red-500"}`}>
-                  {prevBalance >= 0 ? "+" : ""}{formatCurrency(prevBalance)}
-                </span>
-                <span className="text-slate-300 dark:text-slate-600">+</span>
-              </>
-            )}
-
-            <span className="text-slate-500 dark:text-slate-400 text-xs">{getMonthName(month)}:</span>
-            <span className={`font-semibold text-sm ${balance >= 0 ? "text-emerald-600" : "text-red-500"}`}>
-              {balance >= 0 ? "+" : ""}{formatCurrency(balance)}
-            </span>
-            <span className="text-slate-300 dark:text-slate-600">=</span>
-            <span className="text-xs text-slate-500 dark:text-slate-400">Saldo acumulado:</span>
-            <span className={`font-bold text-base ${accBalance >= 0 ? "text-emerald-700 dark:text-emerald-400" : "text-red-600"}`}>
-              {accBalance >= 0 ? "+" : ""}{formatCurrency(accBalance)}
-            </span>
-
-            {/* Botão configurar */}
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs min-w-0">
+              <span className="text-slate-500 dark:text-slate-400">{getMonthName(month)}:</span>
+              <span className={`font-semibold ${balance >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                {balance >= 0 ? "+" : ""}{formatCurrency(balance)}
+              </span>
+              {prevPeriodLabel && (
+                <>
+                  <span className="text-slate-300 dark:text-slate-600 hidden sm:inline">·</span>
+                  <span className="text-slate-400 hidden sm:inline">Acum. ({prevPeriodLabel}): <span className={`font-medium ${prevBalance >= 0 ? "text-emerald-600" : "text-red-500"}`}>{prevBalance >= 0 ? "+" : ""}{formatCurrency(prevBalance)}</span></span>
+                </>
+              )}
+              <span className="text-slate-300 dark:text-slate-600">=</span>
+              <span className={`font-bold text-sm ${accBalance >= 0 ? "text-emerald-700 dark:text-emerald-400" : "text-red-600"}`}>
+                {accBalance >= 0 ? "+" : ""}{formatCurrency(accBalance)}
+              </span>
+            </div>
             <button
               onClick={() => { setEditAccConfig({ ...accConfig }); setAccModal(true); }}
-              className="ml-auto p-1.5 hover:bg-black/5 dark:hover:bg-white/5 rounded-lg transition-colors"
+              className="p-1.5 hover:bg-black/5 dark:hover:bg-white/5 rounded-lg transition-colors shrink-0 ml-2"
               title="Configurar saldo acumulado"
             >
               <Settings size={13} className="text-slate-400 dark:text-slate-500" />
@@ -804,7 +784,7 @@ export default function GastosMensaisPage() {
       <TitheSection />
 
       {/* Quinzenas */}
-      <div className="space-y-8">
+      <div className="space-y-6">
         <QuinzenaSection
           label="1ª Quinzena" subtitle="dias 1 a 15"
           bills={q1Bills} cards={q1Cards} totalQ={q1Total}

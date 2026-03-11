@@ -690,138 +690,79 @@ export default function GastosMensaisPage() {
   // ── Render: fluxo de caixa ────────────────────────────────────────────────
 
   function FluxoCaixa() {
-    const accBalance  = prevBalance + balance;
-    const saldoMeio   = prevBalance + incomeTotal - q1Total; // após receitas e 1ª quinzena
+    const accBalance = prevBalance + balance;
+    const saldoMeio  = prevBalance + incomeTotal - q1Total;
 
-    function FlowItem({ label, value, color }: { label: string; value: number; color: string }) {
+    function FlowRow({ label, value, muted }: { label: string; value: number; muted?: boolean }) {
+      const pos = value >= 0;
       return (
-        <div className="flex justify-between items-center">
-          <span className="text-xs text-slate-500 dark:text-slate-400">{label}</span>
-          <span className={`text-xs font-medium ${color}`}>{value >= 0 ? "+" : "-"}{formatCurrency(Math.abs(value))}</span>
-        </div>
-      );
-    }
-
-    function SectionTotal({ label, value }: { label: string; value: number }) {
-      return (
-        <div className="flex justify-between items-center pt-1.5 mt-1 border-t border-slate-100 dark:border-slate-700/50 pl-3.5">
-          <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{label}</span>
-          <span className={`text-sm font-bold ${value >= 0 ? "text-emerald-600" : "text-red-500"}`}>
-            {value >= 0 ? "+" : "-"}{formatCurrency(Math.abs(value))}
+        <div className="flex items-center justify-between py-1.5">
+          <span className={`text-xs ${muted ? "text-slate-400 dark:text-slate-500" : "text-slate-500 dark:text-slate-400"}`}>{label}</span>
+          <span className={`text-sm font-semibold ${muted ? "text-slate-400 dark:text-slate-500" : pos ? "text-emerald-600 dark:text-emerald-400" : "text-red-500 dark:text-red-400"}`}>
+            {pos ? "+" : ""}{formatCurrency(value)}
           </span>
         </div>
       );
     }
 
-    function Checkpoint({ label, value }: { label: string; value: number }) {
+    function Mid({ label, value }: { label: string; value: number }) {
+      const pos = value >= 0;
       return (
-        <div className={`flex items-center justify-between px-3 py-2 rounded-lg my-2 ${
-          value >= 0 ? "bg-emerald-50 dark:bg-emerald-900/20" : "bg-red-50 dark:bg-red-900/20"
+        <div className={`flex items-center justify-between px-3 py-1.5 -mx-4 border-y ${
+          pos ? "bg-emerald-50/70 dark:bg-emerald-900/20 border-emerald-100 dark:border-emerald-800/30"
+              : "bg-red-50/70 dark:bg-red-900/20 border-red-100 dark:border-red-800/30"
         }`}>
-          <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{label}</span>
-          <span className={`text-sm font-bold ${value >= 0 ? "text-emerald-600" : "text-red-500"}`}>
-            {value >= 0 ? "+" : ""}{formatCurrency(value)}
+          <span className="text-xs font-medium text-slate-500 dark:text-slate-400">{label}</span>
+          <span className={`text-sm font-bold ${pos ? "text-emerald-600" : "text-red-500"}`}>
+            {pos ? "+" : ""}{formatCurrency(value)}
           </span>
         </div>
       );
     }
 
     return (
-      <div className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/50 rounded-xl p-4 mb-4">
+      <div className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/50 rounded-xl px-4 pt-3 pb-4 mb-4 overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <h2 className="text-sm font-bold text-slate-700 dark:text-slate-200">Fluxo de Caixa</h2>
-            <p className="text-xs text-slate-400 dark:text-slate-500">{getMonthName(month)} {year}</p>
-          </div>
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wide">
+            Fluxo de Caixa · {getMonthName(month)} {year}
+          </span>
           <button
             onClick={() => { setEditAccConfig({ ...accConfig }); setAccModal(true); }}
-            className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
+            className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-md transition-colors"
             title="Configurar saldo acumulado"
           >
-            <Settings size={13} className="text-slate-400 dark:text-slate-500" />
+            <Settings size={12} className="text-slate-400 dark:text-slate-500" />
           </button>
         </div>
 
-        {/* Saldo anterior */}
-        {prevBalance !== 0 && (
-          <div className="flex justify-between items-center py-1.5 mb-3 border-b border-slate-100 dark:border-slate-700/50">
-            <span className="text-xs text-slate-500 dark:text-slate-400">Saldo anterior</span>
-            <span className={`text-xs font-semibold ${prevBalance >= 0 ? "text-emerald-600" : "text-red-500"}`}>
-              {prevBalance >= 0 ? "+" : ""}{formatCurrency(prevBalance)}
-            </span>
-          </div>
-        )}
-
-        {/* Receitas */}
-        <div className="mb-2">
-          <div className="flex items-center gap-2 mb-1.5">
-            <span className="w-1.5 h-4 rounded-full bg-emerald-500 shrink-0 inline-block" />
-            <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">Receitas</span>
-          </div>
-          <div className="pl-3.5 space-y-1">
-            {incomeSources.map(src => {
-              if (src.is_recurring === false && (src.one_time_month !== month || src.one_time_year !== year)) return null;
-              const mi  = monthlyIncomes.find(i => i.source_id === src.id);
-              const amt = mi?.amount ?? src.base_amount;
-              return (
-                <FlowItem key={src.id} label={src.name} value={amt} color="text-emerald-600 dark:text-emerald-400" />
-              );
-            })}
-          </div>
-          <SectionTotal label="Total receitas" value={incomeTotal} />
+        <div className="divide-y divide-slate-100 dark:divide-slate-700/50">
+          {prevBalance !== 0 && <FlowRow label="Saldo anterior" value={prevBalance} muted />}
+          <FlowRow label="Receitas" value={incomeTotal} />
+          <FlowRow label="1ª Quinzena (dias 1–15)" value={-q1Total} />
         </div>
 
-        {/* 1ª Quinzena */}
-        <div className="mb-0">
-          <div className="flex items-center gap-2 mb-1.5 mt-2">
-            <span className="w-1.5 h-4 rounded-full bg-primary-500 shrink-0 inline-block" />
-            <span className="text-xs font-semibold text-primary-600 dark:text-primary-400">1ª Quinzena — dias 1 a 15</span>
-          </div>
-          <div className="pl-3.5 space-y-1">
-            {q1BillsSum > 0 && <FlowItem label="Contas" value={-q1BillsSum} color="text-red-500" />}
-            {q1CardsSum > 0 && <FlowItem label="Cartões" value={-q1CardsSum} color="text-red-500" />}
-            {tithePeriod === "1-15" && titheDisplayAmt > 0 && (
-              <FlowItem label="Dízimo" value={-titheDisplayAmt} color="text-violet-500" />
-            )}
-          </div>
-          <SectionTotal label="Total 1ª quinzena" value={-q1Total} />
-        </div>
+        <Mid label="Pós 1ª quinzena" value={saldoMeio} />
 
-        {/* Checkpoint: saldo pós 1ª quinzena */}
-        <Checkpoint label="Saldo — pós 1ª quinzena" value={saldoMeio} />
-
-        {/* 2ª Quinzena */}
-        <div className="mb-0">
-          <div className="flex items-center gap-2 mb-1.5">
-            <span className="w-1.5 h-4 rounded-full bg-amber-500 shrink-0 inline-block" />
-            <span className="text-xs font-semibold text-amber-600 dark:text-amber-400">2ª Quinzena — dias 16 a 30</span>
-          </div>
-          <div className="pl-3.5 space-y-1">
-            {q2BillsSum > 0 && <FlowItem label="Contas" value={-q2BillsSum} color="text-red-500" />}
-            {q2CardsSum > 0 && <FlowItem label="Cartões" value={-q2CardsSum} color="text-red-500" />}
-            {tithePeriod === "16-30" && titheDisplayAmt > 0 && (
-              <FlowItem label="Dízimo" value={-titheDisplayAmt} color="text-violet-500" />
-            )}
-          </div>
-          <SectionTotal label="Total 2ª quinzena" value={-q2Total} />
+        <div className="divide-y divide-slate-100 dark:divide-slate-700/50">
+          <FlowRow label="2ª Quinzena (dias 16–30)" value={-q2Total} />
         </div>
 
         {/* Saldo final */}
-        <div className={`flex items-center justify-between px-3 py-3 rounded-xl mt-2 border ${
+        <div className={`flex items-center justify-between px-3 py-2.5 rounded-xl mt-3 border ${
           accBalance >= 0
             ? "bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800/30"
             : "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800/30"
         }`}>
           <div>
-            <p className="text-sm font-bold text-slate-700 dark:text-slate-200">Saldo final</p>
+            <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">Saldo final</p>
             {prevBalance !== 0 && (
-              <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
+              <p className="text-xs text-slate-400 dark:text-slate-500">
                 Mês: {balance >= 0 ? "+" : ""}{formatCurrency(balance)}
               </p>
             )}
           </div>
-          <span className={`text-lg font-bold ${accBalance >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+          <span className={`text-base font-bold ${accBalance >= 0 ? "text-emerald-600" : "text-red-500"}`}>
             {accBalance >= 0 ? "+" : ""}{formatCurrency(accBalance)}
           </span>
         </div>

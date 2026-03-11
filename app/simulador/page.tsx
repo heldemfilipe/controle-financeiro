@@ -11,7 +11,7 @@ import {
   getFixedBills, getIncomeSources, getMonthlyIncomes,
   getMonthlyBillPayments, getCardTransactions,
 } from "@/lib/queries";
-import { formatCurrency, getMonthName, computeInstallment } from "@/lib/utils";
+import { formatCurrency, getMonthName, computeInstallment, getAccConfig } from "@/lib/utils";
 import { MONTH_SHORT } from "@/types";
 import type { FixedBill } from "@/types";
 import {
@@ -83,7 +83,7 @@ function newMod(): ScenarioMod {
   };
 }
 
-function applyMods(base: MonthData[], mods: ScenarioMod[], bills: FixedBill[], year: number): MonthData[] {
+function applyMods(base: MonthData[], mods: ScenarioMod[], bills: FixedBill[], year: number, startBalance: number = 0): MonthData[] {
   const modified = base.map(row => {
     let receitas   = row.receitas;
     let billsTotal = row.billsTotal;
@@ -116,7 +116,7 @@ function applyMods(base: MonthData[], mods: ScenarioMod[], bills: FixedBill[], y
     return { ...row, receitas, billsTotal, despesas, saldo: receitas - despesas };
   });
 
-  let acc = 0;
+  let acc = startBalance;
   return modified.map(m => { acc += m.saldo; return { ...m, saldoAcumulado: acc }; });
 }
 
@@ -140,6 +140,7 @@ export default function SimuladorPage() {
 
   const [scenarioName, setScenarioName] = useState("Meu Cenário");
   const [mods, setMods]     = useState<ScenarioMod[]>([]);
+  const [yearStartBalance, setYearStartBalance] = useState(0);
 
   // Persist scenario
   useEffect(() => {
@@ -159,6 +160,49 @@ export default function SimuladorPage() {
     try {
       const [allBills, sources] = await Promise.all([getFixedBills(), getIncomeSources()]);
       setBills(allBills);
+      const cfg = getAccConfig();
+
+      // Carry-over: saldoInicial + saldo acumulado de anos anteriores
+      let startBal = cfg.saldoInicial;
+      if (year > cfg.startYear) {
+        const prevEntries: { m: number; y: number }[] = [];
+        for (let y = cfg.startYear; y < year; y++) {
+          const fromM = y === cfg.startYear ? cfg.startMonth : 1;
+          for (let m = fromM; m <= 12; m++) prevEntries.push({ m, y });
+        }
+        const prevSaldos = await Promise.all(
+          prevEntries.map(async ({ m, y: py }) => {
+            const [inc, bp, txs] = await Promise.all([
+              getMonthlyIncomes(m, py),
+              getMonthlyBillPayments(m, py),
+              getCardTransactions(m, py),
+            ]);
+            const rec = sources.reduce((s, src) => {
+              const mi = inc.find((x: any) => x.source_id === src.id);
+              if (src.is_recurring === false) {
+                if (src.one_time_month !== m || src.one_time_year !== py) return s;
+                return s + (mi?.amount ?? src.base_amount);
+              }
+              return s + (mi?.amount ?? src.base_amount);
+            }, 0);
+            const paidIds = bp.map((b: any) => b.bill_id);
+            const missing = allBills.filter(b => {
+              if (paidIds.includes(b.id)) return false;
+              if (!b.installment_total) return true;
+              if (b.installment_start_month == null || b.installment_start_year == null) return true;
+              return computeInstallment(b, m, py) !== null;
+            });
+            const billsTotal = [
+              ...bp.map((b: any) => b.amount ?? b.fixed_bills?.amount ?? 0),
+              ...missing.map((b: any) => b.amount),
+            ].reduce((s: number, v: number) => s + v, 0);
+            const cartoes = txs.reduce((s: number, t: any) => s - t.amount, 0);
+            return rec - billsTotal - cartoes;
+          })
+        );
+        startBal += prevSaldos.reduce((s, v) => s + v, 0);
+      }
+      setYearStartBalance(startBal);
 
       const rawMonths = await Promise.all(
         Array.from({ length: 12 }, async (_, i) => {
@@ -195,13 +239,13 @@ export default function SimuladorPage() {
         })
       );
 
-      let acc = 0;
+      let acc = startBal;
       setBaseData(rawMonths.map(m => { acc += m.saldo; return { ...m, saldoAcumulado: acc }; }));
     } finally { setLoading(false); }
   }
 
   // Derived
-  const scenarioData = applyMods(baseData, mods, bills, year);
+  const scenarioData = applyMods(baseData, mods, bills, year, yearStartBalance);
 
   const totBase = {
     receitas: baseData.reduce((s, d) => s + d.receitas, 0),

@@ -16,7 +16,7 @@ import {
   getMonthlyIncomes, getMonthlyBillPayments,
   getCardTransactions, getFixedBills, getIncomeSources,
 } from "@/lib/queries";
-import { formatCurrency, getMonthName, computeInstallment } from "@/lib/utils";
+import { formatCurrency, getMonthName, computeInstallment, getAccConfig } from "@/lib/utils";
 import { MONTH_SHORT } from "@/types";
 
 interface MonthData {
@@ -43,6 +43,48 @@ export default function GastosAnuaisPage() {
     try {
       const allBills = await getFixedBills();
       const sources  = await getIncomeSources();
+      const cfg = getAccConfig();
+
+      // Compute carry-over: saldoInicial + saldo acumulado de anos anteriores
+      let yearStartBalance = cfg.saldoInicial;
+      if (year > cfg.startYear) {
+        const prevEntries: { m: number; y: number }[] = [];
+        for (let y = cfg.startYear; y < year; y++) {
+          const fromM = y === cfg.startYear ? cfg.startMonth : 1;
+          for (let m = fromM; m <= 12; m++) prevEntries.push({ m, y });
+        }
+        const prevSaldos = await Promise.all(
+          prevEntries.map(async ({ m, y: py }) => {
+            const [inc, bp, txs] = await Promise.all([
+              getMonthlyIncomes(m, py),
+              getMonthlyBillPayments(m, py),
+              getCardTransactions(m, py),
+            ]);
+            const rec = sources.reduce((s, src) => {
+              const mi = inc.find(x => x.source_id === src.id);
+              if (src.is_recurring === false) {
+                if (src.one_time_month !== m || src.one_time_year !== py) return s;
+                return s + (mi?.amount ?? src.base_amount);
+              }
+              return s + (mi?.amount ?? src.base_amount);
+            }, 0);
+            const paidIds = bp.map((b: any) => b.bill_id);
+            const missing = allBills.filter(b => {
+              if (paidIds.includes(b.id)) return false;
+              if (!b.installment_total) return true;
+              if (b.installment_start_month == null || b.installment_start_year == null) return true;
+              return computeInstallment(b, m, py) !== null;
+            });
+            const billsTotal = [
+              ...bp.map((b: any) => b.amount ?? b.fixed_bills?.amount ?? 0),
+              ...missing.map((b: any) => b.amount),
+            ].reduce((s: number, v: number) => s + v, 0);
+            const cartoes = txs.reduce((s: number, t: any) => s - t.amount, 0);
+            return rec - billsTotal - cartoes;
+          })
+        );
+        yearStartBalance += prevSaldos.reduce((s, v) => s + v, 0);
+      }
 
       const rawMonths = await Promise.all(
         Array.from({ length: 12 }, async (_, i) => {
@@ -85,7 +127,7 @@ export default function GastosAnuaisPage() {
         })
       );
 
-      let acc = 0;
+      let acc = yearStartBalance;
       const months = rawMonths.map(m => { acc += m.saldo; return { ...m, saldoAcumulado: acc }; });
       setData(months);
     } finally {

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import {
   TrendingUp, TrendingDown, Wallet, CreditCard,
   ChevronLeft, ChevronRight, ArrowUpRight, ArrowDownRight,
-  Trophy, AlertCircle, BarChart2, Calendar,
+  Trophy, AlertCircle, BarChart2, Calendar, Download,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -150,6 +150,17 @@ export default function GastosAnuaisPage() {
   return (
     <div className="p-4 md:p-6 min-h-screen">
       <PageHeader title="Gastos Anuais" subtitle="Visão completa do ano">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={async () => {
+              const { exportFinanceiro } = await import("@/lib/exportExcel");
+              await exportFinanceiro(year);
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors"
+            title="Exportar dados do ano para Excel"
+          >
+            <Download size={13} /> Excel
+          </button>
         {/* Year Selector */}
         <div className="flex items-center gap-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl px-1 py-1 transition-colors">
           <button onClick={() => setYear(y => y - 1)}
@@ -161,6 +172,7 @@ export default function GastosAnuaisPage() {
             className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
             <ChevronRight size={16} className="text-slate-600 dark:text-slate-300" />
           </button>
+        </div>
         </div>
       </PageHeader>
 

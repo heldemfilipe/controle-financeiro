@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Download } from "lucide-react";
 import {
   PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer,
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -53,7 +52,6 @@ export default function AnalisePage() {
   const [annualCardByCat, setAnnualCardByCat]  = useState<Record<number, Record<string, number>>>({});
   const [incomeTotal,     setIncomeTotal]      = useState(0);
   const [prevBalance,     setPrevBalance]      = useState(0);
-  const [allSources,      setAllSources]       = useState<any[]>([]);
 
   useEffect(() => { loadData(); }, [month, year]);
 
@@ -71,7 +69,6 @@ export default function AnalisePage() {
       ]);
 
       setCategories(cats);
-      setAllSources(sources);
       const regular = filterRegularBills(bills);
       setFixedBills(regular);
 
@@ -213,36 +210,12 @@ export default function AnalisePage() {
     return row;
   });
 
-  // ─── Export Excel ─────────────────────────────────────────────────────────────
-  async function handleExport() {
-    const { exportFinanceiro } = await import("@/lib/exportExcel");
-    await exportFinanceiro(year, month, {
-      categories,
-      fixedBills,
-      annualCardByCat,
-      allCatKeys,
-      incomeTotal,
-      totalExpenses,
-      prevBalance,
-      incomeSources: allSources,
-    });
-  }
-
   // ─── Render ──────────────────────────────────────────────────────────────────
   return (
     <div className="p-3 md:p-6 min-h-screen">
       <PageHeader title="Análise por Categoria" subtitle="Distribuição de gastos mensal e anual">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handleExport}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors"
-            title="Exportar dados do ano para Excel"
-          >
-            <Download size={13} /> Excel
-          </button>
-          <MonthSelector month={month} year={year}
-            onChange={(m, y) => { setMonth(m); setYear(y); }} />
-        </div>
+        <MonthSelector month={month} year={year}
+          onChange={(m, y) => { setMonth(m); setYear(y); }} />
       </PageHeader>
 
       {loading ? (

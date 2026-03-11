@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CheckCircle2, Clock, AlertTriangle, CreditCard, FileText, Pencil, ChevronDown, ChevronRight, Settings } from "lucide-react";
+import { CheckCircle2, Clock, AlertTriangle, CreditCard, FileText, Pencil, ChevronDown, ChevronRight, Settings, Download } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { MonthSelector } from "@/components/ui/MonthSelector";
 import { Toggle } from "@/components/ui/Toggle";
@@ -91,7 +91,7 @@ export default function GastosMensaisPage() {
     setLoading(true);
     try {
       const [
-        bills, payments, cards, cardPays, txs, sources, incomes,
+        bills, payments, cards, cardPays, txs, sources, incomes, allSources,
       ] = await Promise.all([
         getFixedBills(),
         getMonthlyBillPayments(month, year),
@@ -100,6 +100,7 @@ export default function GastosMensaisPage() {
         getCardTransactions(month, year),
         getIncomeSources(month, year),
         getMonthlyIncomes(month, year),
+        getIncomeSources(),             // todas as fontes (incluindo avulsas de meses passados)
       ]);
 
       setFixedBills(bills);
@@ -119,9 +120,6 @@ export default function GastosMensaisPage() {
       setCardTotals(totals);
 
       // ── Saldo acumulado: soma os saldos do mês de início até mês-1 ─────────
-      const baseRecurringIncome = sources
-        .filter(s => s.is_recurring !== false)
-        .reduce((s, src) => s + src.base_amount, 0);
 
       const cfg = accConfig; // snapshot do config atual
       // Determina quais meses entram na acumulação
@@ -151,9 +149,15 @@ export default function GastosMensaisPage() {
               getMonthlyBillPayments(m, year),
               getCardTransactions(m, year),
             ]);
-            const inc2 = incData.length > 0
-              ? incData.reduce((s, i) => s + i.amount, 0)
-              : baseRecurringIncome;
+            // Soma receitas do mês histórico: inclui avulsas do mês correto
+            const sourcesM = allSources.filter(s =>
+              s.is_recurring !== false ||
+              (s.one_time_month === m && s.one_time_year === year)
+            );
+            const inc2 = sourcesM.reduce((s, src) => {
+              const rec = incData.find((i) => i.source_id === src.id);
+              return s + (rec?.amount ?? src.base_amount);
+            }, 0);
             const activeBills = bills.filter(bill => {
               if (!bill.installment_total) return true;
               if (bill.installment_start_month == null || bill.installment_start_year == null) return true;
@@ -830,8 +834,20 @@ export default function GastosMensaisPage() {
   return (
     <div className="p-3 md:p-6 min-h-screen">
       <PageHeader title="Gastos Mensais" subtitle="Controle de pagamentos por quinzena">
-        <MonthSelector month={month} year={year}
-          onChange={(m, y) => { setMonth(m); setYear(y); }} />
+        <div className="flex items-center gap-2">
+          <button
+            onClick={async () => {
+              const { exportMonth } = await import("@/lib/exportExcel");
+              await exportMonth(month, year);
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors"
+            title="Exportar mês para Excel"
+          >
+            <Download size={13} /> Excel
+          </button>
+          <MonthSelector month={month} year={year}
+            onChange={(m, y) => { setMonth(m); setYear(y); }} />
+        </div>
       </PageHeader>
 
       <FluxoCaixa />

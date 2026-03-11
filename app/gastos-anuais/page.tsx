@@ -142,7 +142,79 @@ export default function GastosAnuaisPage() {
         <div className="flex items-center justify-center h-64 text-slate-400">Carregando…</div>
       ) : (
         <>
-          {/* ── Tabela: PRIMEIRO ──────────────────────────────────────────────── */}
+          {/* ── KPIs ─────────────────────────────────────────────────────────── */}
+          <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 mb-4">
+            <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800/30 rounded-xl p-3 transition-colors">
+              <div className="flex justify-between items-start">
+                <div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mb-0.5">Receitas {year}</p>
+                  <p className="text-base font-bold text-emerald-700 dark:text-emerald-400">{formatCurrency(totalReceitas)}</p>
+                  <p className="text-xs text-emerald-600 mt-0.5">Média {formatCurrency(avgReceitas)}/mês</p>
+                </div>
+                <TrendingUp size={16} className="text-emerald-400 shrink-0" />
+              </div>
+            </div>
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800/30 rounded-xl p-3 transition-colors">
+              <div className="flex justify-between items-start">
+                <div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mb-0.5">Despesas {year}</p>
+                  <p className="text-base font-bold text-red-700 dark:text-red-400">{formatCurrency(totalDespesas)}</p>
+                  <p className="text-xs text-red-600 mt-0.5">Média {formatCurrency(avgDespesas)}/mês</p>
+                </div>
+                <TrendingDown size={16} className="text-red-400 shrink-0" />
+              </div>
+            </div>
+            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800/30 rounded-xl p-3 transition-colors">
+              <div className="flex justify-between items-start">
+                <div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mb-0.5">Cartões {year}</p>
+                  <p className="text-base font-bold text-amber-700 dark:text-amber-400">{formatCurrency(totalCartoes)}</p>
+                  <p className="text-xs text-amber-600 mt-0.5">Média {formatCurrency(totalCartoes / 12)}/mês</p>
+                </div>
+                <CreditCard size={16} className="text-amber-400 shrink-0" />
+              </div>
+            </div>
+            <div className={`border rounded-xl p-3 transition-colors ${totalSaldo >= 0 ? "bg-primary-50 dark:bg-primary-900/20 border-primary-100 dark:border-primary-800/30" : "bg-red-50 dark:bg-red-900/20 border-red-100 dark:border-red-800/30"}`}>
+              <div className="flex justify-between items-start">
+                <div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mb-0.5">Saldo Anual</p>
+                  <p className={`text-base font-bold ${totalSaldo >= 0 ? "text-primary-700 dark:text-primary-400" : "text-red-700 dark:text-red-400"}`}>{formatCurrency(totalSaldo)}</p>
+                  <p className={`text-xs mt-0.5 ${totalSaldo >= 0 ? "text-primary-600" : "text-red-500"}`}>
+                    {totalReceitas > 0 ? `${((totalDespesas / totalReceitas) * 100).toFixed(1)}% comprometido` : "—"}
+                  </p>
+                </div>
+                <Wallet size={16} className={`shrink-0 ${totalSaldo >= 0 ? "text-primary-400" : "text-red-400"}`} />
+              </div>
+            </div>
+          </div>
+
+          {/* ── Melhor / Pior mês ────────────────────────────────────────────── */}
+          {(melhorMes || piorMes) && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+              {melhorMes && (
+                <div className="bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-xl p-3 text-white">
+                  <div className="flex items-center gap-1.5 mb-0.5">
+                    <Trophy size={13} className="text-emerald-200" />
+                    <span className="text-xs font-semibold text-emerald-100 uppercase tracking-wide">Melhor mês</span>
+                  </div>
+                  <p className="text-base font-bold">{getMonthName(melhorMes.month)}</p>
+                  <p className="text-xs text-emerald-100">Saldo: {formatCurrency(melhorMes.saldo)}</p>
+                </div>
+              )}
+              {piorMes && (
+                <div className="bg-gradient-to-r from-red-500 to-red-600 rounded-xl p-3 text-white">
+                  <div className="flex items-center gap-1.5 mb-0.5">
+                    <AlertCircle size={13} className="text-red-200" />
+                    <span className="text-xs font-semibold text-red-100 uppercase tracking-wide">Mês mais pesado</span>
+                  </div>
+                  <p className="text-base font-bold">{getMonthName(piorMes.month)}</p>
+                  <p className="text-xs text-red-100">Saldo: {formatCurrency(piorMes.saldo)} · Despesas: {formatCurrency(piorMes.despesas)}</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Tabela Resumo Mensal ──────────────────────────────────────────── */}
           <div className="card mb-4 transition-colors overflow-hidden">
             <h3 className="text-sm font-bold text-slate-700 dark:text-slate-200 mb-3">Resumo Mensal — {year}</h3>
             <div className="overflow-x-auto -mx-4 px-4">
@@ -227,78 +299,6 @@ export default function GastosAnuaisPage() {
               </table>
             </div>
           </div>
-
-          {/* ── KPIs ─────────────────────────────────────────────────────────── */}
-          <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 mb-4">
-            <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800/30 rounded-xl p-3 transition-colors">
-              <div className="flex justify-between items-start">
-                <div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mb-0.5">Receitas {year}</p>
-                  <p className="text-base font-bold text-emerald-700 dark:text-emerald-400">{formatCurrency(totalReceitas)}</p>
-                  <p className="text-xs text-emerald-600 mt-0.5">Média {formatCurrency(avgReceitas)}/mês</p>
-                </div>
-                <TrendingUp size={16} className="text-emerald-400 shrink-0" />
-              </div>
-            </div>
-            <div className="bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800/30 rounded-xl p-3 transition-colors">
-              <div className="flex justify-between items-start">
-                <div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mb-0.5">Despesas {year}</p>
-                  <p className="text-base font-bold text-red-700 dark:text-red-400">{formatCurrency(totalDespesas)}</p>
-                  <p className="text-xs text-red-600 mt-0.5">Média {formatCurrency(avgDespesas)}/mês</p>
-                </div>
-                <TrendingDown size={16} className="text-red-400 shrink-0" />
-              </div>
-            </div>
-            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800/30 rounded-xl p-3 transition-colors">
-              <div className="flex justify-between items-start">
-                <div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mb-0.5">Cartões {year}</p>
-                  <p className="text-base font-bold text-amber-700 dark:text-amber-400">{formatCurrency(totalCartoes)}</p>
-                  <p className="text-xs text-amber-600 mt-0.5">Média {formatCurrency(totalCartoes / 12)}/mês</p>
-                </div>
-                <CreditCard size={16} className="text-amber-400 shrink-0" />
-              </div>
-            </div>
-            <div className={`border rounded-xl p-3 transition-colors ${totalSaldo >= 0 ? "bg-primary-50 dark:bg-primary-900/20 border-primary-100 dark:border-primary-800/30" : "bg-red-50 dark:bg-red-900/20 border-red-100 dark:border-red-800/30"}`}>
-              <div className="flex justify-between items-start">
-                <div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mb-0.5">Saldo Anual</p>
-                  <p className={`text-base font-bold ${totalSaldo >= 0 ? "text-primary-700 dark:text-primary-400" : "text-red-700 dark:text-red-400"}`}>{formatCurrency(totalSaldo)}</p>
-                  <p className={`text-xs mt-0.5 ${totalSaldo >= 0 ? "text-primary-600" : "text-red-500"}`}>
-                    {totalReceitas > 0 ? `${((totalDespesas / totalReceitas) * 100).toFixed(1)}% comprometido` : "—"}
-                  </p>
-                </div>
-                <Wallet size={16} className={`shrink-0 ${totalSaldo >= 0 ? "text-primary-400" : "text-red-400"}`} />
-              </div>
-            </div>
-          </div>
-
-          {/* ── Melhor / Pior mês ────────────────────────────────────────────── */}
-          {(melhorMes || piorMes) && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-              {melhorMes && (
-                <div className="bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-xl p-3 text-white">
-                  <div className="flex items-center gap-1.5 mb-0.5">
-                    <Trophy size={13} className="text-emerald-200" />
-                    <span className="text-xs font-semibold text-emerald-100 uppercase tracking-wide">Melhor mês</span>
-                  </div>
-                  <p className="text-base font-bold">{getMonthName(melhorMes.month)}</p>
-                  <p className="text-xs text-emerald-100">Saldo: {formatCurrency(melhorMes.saldo)}</p>
-                </div>
-              )}
-              {piorMes && (
-                <div className="bg-gradient-to-r from-red-500 to-red-600 rounded-xl p-3 text-white">
-                  <div className="flex items-center gap-1.5 mb-0.5">
-                    <AlertCircle size={13} className="text-red-200" />
-                    <span className="text-xs font-semibold text-red-100 uppercase tracking-wide">Mês mais pesado</span>
-                  </div>
-                  <p className="text-base font-bold">{getMonthName(piorMes.month)}</p>
-                  <p className="text-xs text-red-100">Saldo: {formatCurrency(piorMes.saldo)} · Despesas: {formatCurrency(piorMes.despesas)}</p>
-                </div>
-              )}
-            </div>
-          )}
 
           {/* ── Gráficos (2 essenciais) ───────────────────────────────────────── */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

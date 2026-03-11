@@ -361,3 +361,14 @@ export async function getCardTotalsByMonth(year: number): Promise<Record<number,
   );
   return results;
 }
+
+/** Todas as transações de cartão de um ano (query única para análise anual) */
+export async function getCardTransactionsByYear(year: number): Promise<CardTransaction[]> {
+  const { data, error } = await supabase
+    .from("card_transactions")
+    .select("*")
+    .eq("year", year)
+    .order("month", { ascending: true });
+  if (error) throw error;
+  return (data ?? []) as CardTransaction[];
+}

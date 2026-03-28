@@ -118,6 +118,16 @@ export interface MonthlyIncome {
   income_sources?: IncomeSource;
 }
 
+export interface MonthlyBalanceOverride {
+  id: string;
+  month: number;
+  year: number;
+  override_amount: number;
+  notes: string | null;
+  auto_zero: boolean;
+  created_at: string;
+}
+
 export interface MonthSummary {
   month: number;
   year: number;

@@ -102,7 +102,7 @@ export default function GastosCataoesPage() {
     .map(([name, stats]) => ({ name, ...stats }));
 
   return (
-    <div className="p-4 md:p-6 min-h-screen">
+    <div className="p-3 md:p-6 min-h-screen">
       <PageHeader title="Gastos nos Cartões" subtitle="Análise detalhada das faturas">
         <div className="flex items-center gap-2">
           {/* View Mode Toggle */}
@@ -149,83 +149,53 @@ export default function GastosCataoesPage() {
       </PageHeader>
 
       {/* Summary KPIs */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 md:gap-4 mb-6">
-        <div className="bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800/30 rounded-xl p-4 transition-colors">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-xs text-slate-500 dark:text-slate-400">Total Gasto</p>
-              <p className="text-xl font-bold text-red-700 dark:text-red-400">{formatCurrency(grandTotal)}</p>
-              <p className="text-xs text-red-500 mt-0.5">
-                {viewMode === "mensal"
-                  ? `${getMonthName(month)} ${year}`
-                  : `Ano ${year}`}
-              </p>
-            </div>
-            <div className="bg-red-100 dark:bg-red-800/40 p-2 rounded-xl">
-              <TrendingDown size={18} className="text-red-600 dark:text-red-400" />
-            </div>
-          </div>
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-2 md:gap-3 mb-4">
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800/30 rounded-xl p-3 transition-colors">
+          <p className="text-xs text-slate-500 dark:text-slate-400 mb-0.5">Total Gasto</p>
+          <p className="text-base font-bold text-red-700 dark:text-red-400">{formatCurrency(grandTotal)}</p>
+          <p className="text-xs text-red-500 mt-0.5">
+            {viewMode === "mensal" ? `${getMonthName(month)} ${year}` : `Ano ${year}`}
+          </p>
         </div>
 
-        <div className="bg-primary-50 dark:bg-primary-900/20 border border-primary-100 dark:border-primary-800/30 rounded-xl p-4 transition-colors">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-xs text-slate-500 dark:text-slate-400">Cartões Ativos</p>
-              <p className="text-xl font-bold text-primary-700 dark:text-primary-400">
-                {cardStats.filter(c => c.total > 0).length}
-                <span className="text-sm font-normal text-slate-400 dark:text-slate-500"> / {cards.length}</span>
-              </p>
-              <p className="text-xs text-primary-600 dark:text-primary-400 mt-0.5">com gastos</p>
-            </div>
-            <div className="bg-primary-100 dark:bg-primary-800/40 p-2 rounded-xl">
-              <CreditCard size={18} className="text-primary-600 dark:text-primary-400" />
-            </div>
-          </div>
+        <div className="bg-primary-50 dark:bg-primary-900/20 border border-primary-100 dark:border-primary-800/30 rounded-xl p-3 transition-colors">
+          <p className="text-xs text-slate-500 dark:text-slate-400 mb-0.5">Cartões Ativos</p>
+          <p className="text-base font-bold text-primary-700 dark:text-primary-400">
+            {cardStats.filter(c => c.total > 0).length}
+            <span className="text-sm font-normal text-slate-400 dark:text-slate-500"> / {cards.length}</span>
+          </p>
+          <p className="text-xs text-primary-600 dark:text-primary-400 mt-0.5">com gastos</p>
         </div>
 
-        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800/30 rounded-xl p-4 transition-colors">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-xs text-slate-500 dark:text-slate-400">Lançamentos</p>
-              <p className="text-xl font-bold text-amber-700 dark:text-amber-400">{totalTxCount}</p>
-              <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
-                Média {formatCurrency(totalTxCount > 0 ? grandTotal / totalTxCount : 0)} cada
-              </p>
-            </div>
-            <div className="bg-amber-100 dark:bg-amber-800/40 p-2 rounded-xl">
-              <Hash size={18} className="text-amber-600 dark:text-amber-400" />
-            </div>
-          </div>
+        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800/30 rounded-xl p-3 transition-colors">
+          <p className="text-xs text-slate-500 dark:text-slate-400 mb-0.5">Lançamentos</p>
+          <p className="text-base font-bold text-amber-700 dark:text-amber-400">{totalTxCount}</p>
+          <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
+            Média {formatCurrency(totalTxCount > 0 ? grandTotal / totalTxCount : 0)}
+          </p>
         </div>
 
-        <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800/30 rounded-xl p-4 transition-colors">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-xs text-slate-500 dark:text-slate-400">Maior Fatura</p>
-              {cardStats[0]?.total > 0 ? (
-                <>
-                  <p className="text-lg font-bold text-emerald-700 dark:text-emerald-400">{formatCurrency(cardStats[0].total)}</p>
-                  <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-0.5 truncate max-w-[120px]">{cardStats[0].card.name}</p>
-                </>
-              ) : (
-                <p className="text-xl font-bold text-slate-300 dark:text-slate-600">—</p>
-              )}
-            </div>
-            <div className="bg-emerald-100 dark:bg-emerald-800/40 p-2 rounded-xl">
-              <Award size={18} className="text-emerald-600 dark:text-emerald-400" />
-            </div>
-          </div>
+        <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800/30 rounded-xl p-3 transition-colors">
+          <p className="text-xs text-slate-500 dark:text-slate-400 mb-0.5">Maior Fatura</p>
+          {cardStats[0]?.total > 0 ? (
+            <>
+              <p className="text-base font-bold text-emerald-700 dark:text-emerald-400">{formatCurrency(cardStats[0].total)}</p>
+              <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-0.5 truncate">{cardStats[0].card.name}</p>
+            </>
+          ) : (
+            <p className="text-base font-bold text-slate-300 dark:text-slate-600">—</p>
+          )}
         </div>
       </div>
 
       {/* Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-4">
         {/* Bar Chart por cartão */}
-        <div className="xl:col-span-2 card">
-          <h3 className="font-semibold text-slate-700 dark:text-slate-200 text-sm mb-4">
+        <div className="lg:col-span-2 card">
+          <h3 className="font-semibold text-slate-700 dark:text-slate-200 text-sm mb-3">
             {viewMode === "mensal" ? "Gastos por Cartão" : "Evolução Mensal por Cartão"}
           </h3>
-          <ResponsiveContainer width="100%" height={240}>
+          <div className="overflow-x-auto -mx-4 px-4"><ResponsiveContainer width="100%" height={220} minWidth={400}>
             {viewMode === "mensal" ? (
               <BarChart
                 data={cardStats.filter(c => c.total > 0).map(c => ({
@@ -267,7 +237,7 @@ export default function GastosCataoesPage() {
                 ))}
               </LineChart>
             )}
-          </ResponsiveContainer>
+          </ResponsiveContainer></div>
         </div>
 
         {/* Pie distribution */}
@@ -315,7 +285,7 @@ export default function GastosCataoesPage() {
       </div>
 
       {/* Bottom Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         {/* Top Transactions */}
         <div className="card">
           <h3 className="font-semibold text-slate-700 dark:text-slate-200 text-sm mb-3 flex items-center gap-2">

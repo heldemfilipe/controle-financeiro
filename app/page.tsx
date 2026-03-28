@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   TrendingUp, TrendingDown, Wallet, CreditCard,
-  ArrowUpRight, ArrowDownRight, Calendar
+  ArrowUpRight, ArrowDownRight, Calendar, Plus, FileText, Calculator
 } from "lucide-react";
 import {
   ComposedChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -18,6 +18,7 @@ import {
   getCardTransactions, getFixedBills, getCreditCards,
   getMonthlyCardPayments, getIncomeSources, getCategories,
 } from "@/lib/queries";
+import { computeYearBalances, clearBalanceCache } from "@/lib/balance";
 import { formatCurrency, getMonthName, getCurrentMonth, getAccConfig, computeInstallment } from "@/lib/utils";
 import { MONTH_SHORT } from "@/types";
 import type { Category } from "@/types";
@@ -279,6 +280,22 @@ export default function DashboardPage() {
         />
       </div>
 
+      {/* Quick Actions */}
+      <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
+        <a href="/lancamentos" className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-400 rounded-lg hover:bg-primary-100 dark:hover:bg-primary-900/30 transition-colors whitespace-nowrap">
+          <Plus size={13} /> Novo lancamento
+        </a>
+        <a href="/gastos-mensais" className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors whitespace-nowrap">
+          <FileText size={13} /> Gastos do mes
+        </a>
+        <a href="/simulador" className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium bg-violet-50 dark:bg-violet-900/20 text-violet-700 dark:text-violet-400 rounded-lg hover:bg-violet-100 dark:hover:bg-violet-900/30 transition-colors whitespace-nowrap">
+          <Calculator size={13} /> Simulador
+        </a>
+        <a href="/faturas" className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 rounded-lg hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-colors whitespace-nowrap">
+          <CreditCard size={13} /> Faturas
+        </a>
+      </div>
+
       {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
         {/* Bar + Line Chart */}
@@ -307,7 +324,8 @@ export default function DashboardPage() {
               >Saldo</button>
             </div>
           </div>
-          <ResponsiveContainer width="100%" height={220}>
+          <div className="overflow-x-auto -mx-2 px-2">
+          <ResponsiveContainer width="100%" height={220} minWidth={500}>
             <ComposedChart data={yearlyData} margin={{ top: 5, right: 45, left: 5, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
               <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#94a3b8" }} />
@@ -350,6 +368,7 @@ export default function DashboardPage() {
               />
             </ComposedChart>
           </ResponsiveContainer>
+          </div>
         </div>
 
         {/* Pie Chart */}

@@ -7,6 +7,7 @@ import {
   getFixedBills, getCategories, getCardTransactions,
   getMonthlyBillPayments, getMonthlyIncomes, getIncomeSources,
 } from "@/lib/queries";
+import { computePrevBalance } from "@/lib/balance";
 import type { MonthlyBillPayment, CardTransaction } from "@/types";
 import { formatCurrency, getCurrentMonth, getMonthName, filterRegularBills, getAccConfig, computeInstallment } from "@/lib/utils";
 import type { Category, FixedBill } from "@/types";
@@ -75,52 +76,9 @@ export default function AnalisePage() {
       }, 0);
       setIncomeTotal(inc);
 
-      // Saldo acumulado anterior
-      const cfg = getAccConfig();
-      const baseRecurring = sources
-        .filter(s => s.is_recurring !== false)
-        .reduce((s, src) => s + src.base_amount, 0);
-      let monthsToLoad: number[];
-      if (year === cfg.startYear) {
-        monthsToLoad = month > cfg.startMonth
-          ? Array.from({ length: month - cfg.startMonth }, (_, i) => cfg.startMonth + i) : [];
-      } else if (year > cfg.startYear) {
-        monthsToLoad = month > 1 ? Array.from({ length: month - 1 }, (_, i) => i + 1) : [];
-      } else {
-        monthsToLoad = [];
-      }
-
-      if (monthsToLoad.length === 0) {
-        setPrevBalance(cfg.saldoInicial);
-      } else {
-        const pastBalances = await Promise.all(
-          monthsToLoad.map(async (m) => {
-            const [incPast, billsPast, txsPast] = await Promise.all([
-              getMonthlyIncomes(m, year),
-              getMonthlyBillPayments(m, year),
-              getCardTransactions(m, year),
-            ]);
-            const incPastTotal = incPast.length > 0
-              ? incPast.reduce((s, i) => s + i.amount, 0) : baseRecurring;
-            const activeBills = regular.filter(bill => {
-              if (!bill.installment_total) return true;
-              if (bill.installment_start_month == null || bill.installment_start_year == null) return true;
-              return computeInstallment(bill, m, year) !== null;
-            });
-            const billIdsPast = billsPast.map((b: MonthlyBillPayment) => b.bill_id);
-            const missing = activeBills.filter(b => !billIdsPast.includes(b.id));
-            const billsTotal = [
-              ...billsPast
-                .filter((b: MonthlyBillPayment) => activeBills.some(ab => ab.id === b.bill_id))
-                .map((b: MonthlyBillPayment) => b.amount ?? activeBills.find(ab => ab.id === b.bill_id)?.amount ?? 0),
-              ...missing.map(b => b.amount),
-            ].reduce((s, v) => s + v, 0);
-            const cardsPast = txsPast.reduce((s, t) => s - t.amount, 0);
-            return incPastTotal - billsTotal - cardsPast;
-          })
-        );
-        setPrevBalance(cfg.saldoInicial + pastBalances.reduce((s, v) => s + v, 0));
-      }
+      // Saldo acumulado anterior (usa módulo centralizado com suporte a overrides)
+      const prev = await computePrevBalance(month, year);
+      setPrevBalance(prev);
     } finally {
       setLoading(false);
     }

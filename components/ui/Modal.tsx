@@ -29,10 +29,10 @@ export function Modal({ open, onClose, title, children, size = "md" }: ModalProp
         onClick={onClose}
       />
       <div
-        className={`relative bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full ${maxW} z-10 transition-colors`}
+        className={`relative bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full ${maxW} max-h-[90vh] flex flex-col z-10 transition-colors`}
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-slate-700">
+        <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-slate-700 shrink-0">
           <h2 className="font-semibold text-slate-800 dark:text-slate-100 text-base">{title}</h2>
           <button
             onClick={onClose}
@@ -42,7 +42,7 @@ export function Modal({ open, onClose, title, children, size = "md" }: ModalProp
           </button>
         </div>
         {/* Body */}
-        <div className="p-5">{children}</div>
+        <div className="p-5 overflow-y-auto">{children}</div>
       </div>
     </div>
   );

@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, Pencil, Trash2, TrendingUp, FileText, CreditCard, Check } from "lucide-react";
+import { Plus, Pencil, Trash2, TrendingUp, FileText, CreditCard, Check, Loader2 } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { MonthSelector } from "@/components/ui/MonthSelector";
 import { Modal } from "@/components/ui/Modal";
 import { Toggle } from "@/components/ui/Toggle";
+import { useToast } from "@/components/ui/Toast";
 import {
   getIncomeSources, upsertIncomeSource, deleteIncomeSource,
   getFixedBills, upsertFixedBill, deleteFixedBill,
@@ -52,6 +53,9 @@ export default function LancamentosPage() {
   const [txSort, setTxSort] = useState<Record<string, "date" | "categoria" | "parcelas">>({});
   const [isCredit, setIsCredit] = useState(false);
   const [propagateCategory, setPropagateCategory] = useState(false);
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+
+  const { toast } = useToast();
 
   useEffect(() => { loadAll(); }, [month, year]);
 
@@ -74,28 +78,36 @@ export default function LancamentosPage() {
 
   // ── Income ──────────────────────────────────────────────────────────────────
   async function saveIncome() {
-    if (!editIncome.name || !editIncome.base_amount) return;
+    const errors: Record<string, string> = {};
+    if (!editIncome.name?.trim()) errors.name = "Nome obrigatorio";
+    if (!editIncome.base_amount || editIncome.base_amount <= 0) errors.base_amount = "Valor deve ser positivo";
+    if (Object.keys(errors).length) { setFormErrors(errors); return; }
+    setFormErrors({});
     setLoading(true);
-    const isRecurring = editIncome.is_recurring !== false;
-    await upsertIncomeSource({
-      owner: "casal", type: "salary", active: true,
-      is_recurring: true,
-      one_time_month: null, one_time_year: null,
-      ...editIncome,
-      // Se avulsa, garante os campos corretos
-      ...(isRecurring ? {} : {
-        is_recurring: false,
-        one_time_month: editIncome.one_time_month ?? month,
-        one_time_year:  editIncome.one_time_year  ?? year,
-      }),
-    });
-    setIncomeModal(false); setEditIncome({});
-    await loadAll(); setLoading(false);
+    try {
+      const isRecurring = editIncome.is_recurring !== false;
+      await upsertIncomeSource({
+        owner: "casal", type: "salary", active: true,
+        is_recurring: true,
+        one_time_month: null, one_time_year: null,
+        ...editIncome,
+        ...(isRecurring ? {} : {
+          is_recurring: false,
+          one_time_month: editIncome.one_time_month ?? month,
+          one_time_year:  editIncome.one_time_year  ?? year,
+        }),
+      });
+      setIncomeModal(false); setEditIncome({});
+      toast(editIncome.id ? "Receita atualizada" : "Receita adicionada");
+      await loadAll();
+    } catch { toast("Erro ao salvar receita", "error"); }
+    setLoading(false);
   }
 
   async function removeIncome(id: string) {
     if (!confirm("Remover esta fonte de renda?")) return;
     await deleteIncomeSource(id);
+    toast("Receita removida");
     await loadAll();
   }
 
@@ -107,43 +119,60 @@ export default function LancamentosPage() {
 
   // ── Bills ────────────────────────────────────────────────────────────────────
   async function saveBill() {
-    if (!editBill.name || !editBill.amount) return;
+    const errors: Record<string, string> = {};
+    if (!editBill.name?.trim()) errors.name = "Nome obrigatorio";
+    if (!editBill.amount || editBill.amount <= 0) errors.amount = "Valor deve ser positivo";
+    if (Object.keys(errors).length) { setFormErrors(errors); return; }
+    setFormErrors({});
     setLoading(true);
-
-    let billData: Partial<FixedBill> = { category: "essencial", active: true, ...editBill };
-
-    // Se parcela atual foi informada, calcula start month/year automaticamente
-    // (baseado no mês selecionado na página: "mês atual = parcela X")
-    if (billData.installment_total && billData.installment_current) {
-      const monthIdx  = year * 12 + month - 1;
-      const startIdx  = monthIdx - (billData.installment_current - 1);
-      billData.installment_start_month = (startIdx % 12) + 1;
-      billData.installment_start_year  = Math.floor(startIdx / 12);
-    }
-
-    await upsertFixedBill(billData);
-    setBillModal(false); setEditBill({});
-    await loadAll(); setLoading(false);
+    try {
+      let billData: Partial<FixedBill> = { category: "essencial", active: true, ...editBill };
+      if (billData.installment_total && billData.installment_current) {
+        const monthIdx  = year * 12 + month - 1;
+        const startIdx  = monthIdx - (billData.installment_current - 1);
+        billData.installment_start_month = (startIdx % 12) + 1;
+        billData.installment_start_year  = Math.floor(startIdx / 12);
+      }
+      await upsertFixedBill(billData);
+      setBillModal(false); setEditBill({});
+      toast(editBill.id ? "Conta atualizada" : "Conta adicionada");
+      await loadAll();
+    } catch { toast("Erro ao salvar conta", "error"); }
+    setLoading(false);
   }
 
   async function removeBill(id: string) {
     if (!confirm("Remover esta conta?")) return;
     await deleteFixedBill(id);
+    toast("Conta removida");
     await loadAll();
   }
 
   // ── Cards ────────────────────────────────────────────────────────────────────
   async function saveCard() {
-    if (!editCard.name || !editCard.due_day) return;
+    const errors: Record<string, string> = {};
+    if (!editCard.name?.trim()) errors.name = "Nome obrigatorio";
+    if (!editCard.due_day) errors.due_day = "Dia de vencimento obrigatorio";
+    if (Object.keys(errors).length) { setFormErrors(errors); return; }
+    setFormErrors({});
     setLoading(true);
-    await upsertCreditCard({ color: "#6366f1", active: true, ...editCard });
-    setCardModal(false); setEditCard({});
-    await loadAll(); setLoading(false);
+    try {
+      await upsertCreditCard({ color: "#6366f1", active: true, ...editCard });
+      setCardModal(false); setEditCard({});
+      toast(editCard.id ? "Cartao atualizado" : "Cartao adicionado");
+      await loadAll();
+    } catch { toast("Erro ao salvar cartao", "error"); }
+    setLoading(false);
   }
 
   // ── Card Transactions ────────────────────────────────────────────────────────
   async function saveTx() {
-    if (!editTx.card_id || !editTx.description || !editTx.amount) return;
+    const errors: Record<string, string> = {};
+    if (!editTx.card_id) errors.card_id = "Selecione um cartao";
+    if (!editTx.description?.trim()) errors.description = "Descricao obrigatoria";
+    if (!editTx.amount) errors.amount = "Valor obrigatorio";
+    if (Object.keys(errors).length) { setFormErrors(errors); return; }
+    setFormErrors({});
     setLoading(true);
 
     try {

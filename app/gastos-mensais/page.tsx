@@ -1,22 +1,24 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CheckCircle2, Clock, AlertTriangle, CreditCard, FileText, Pencil, ChevronDown, ChevronRight, Settings, Download } from "lucide-react";
+import { CheckCircle2, Clock, AlertTriangle, CreditCard, FileText, Pencil, ChevronDown, ChevronRight, Settings, Download, Sliders, LayoutList, LayoutGrid } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { MonthSelector } from "@/components/ui/MonthSelector";
 import { Toggle } from "@/components/ui/Toggle";
 import { Modal } from "@/components/ui/Modal";
+import { useToast } from "@/components/ui/Toast";
 import {
   getFixedBills, getMonthlyBillPayments, toggleBillPaid, updateBillPaymentAmount,
   getCreditCards, getCardTransactions, getMonthlyCardPayments, toggleCardPaid,
   getMonthlyIncomes, getIncomeSources,
+  getBalanceOverride, upsertBalanceOverride, deleteBalanceOverride,
 } from "@/lib/queries";
 import { formatCurrency, getCurrentMonth, getMonthName, isOverdue, isDueSoon, computeInstallment, getAccConfig, saveAccConfig } from "@/lib/utils";
 import type { AccumuladoConfig } from "@/lib/utils";
 import { MONTHS } from "@/types";
 import type {
   FixedBill, CreditCard as CCType, MonthlyBillPayment,
-  MonthlyCardPayment, IncomeSource, MonthlyIncome, CardTransaction,
+  MonthlyCardPayment, IncomeSource, MonthlyIncome, CardTransaction, MonthlyBalanceOverride,
 } from "@/types";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -80,6 +82,16 @@ export default function GastosMensaisPage() {
   const [accModal,      setAccModal]      = useState(false);
   const [editAccConfig, setEditAccConfig] = useState<AccumuladoConfig>(() => getAccConfig());
 
+  // ── Override de saldo ──────────────────────────────────────────────────────
+  const [balanceOverride, setBalanceOverride] = useState<MonthlyBalanceOverride | null>(null);
+  const [overrideModal, setOverrideModal] = useState(false);
+  const [overrideForm, setOverrideForm] = useState({ autoZero: false, amount: "0", notes: "" });
+
+  // ── View mode ────────────────────────────────────────────────────────────
+  const [viewMode, setViewMode] = useState<"cards" | "planilha">("cards");
+
+  const { toast } = useToast();
+
   // ── Modal de edição de valor ───────────────────────────────────────────────
   const [editModal, setEditModal] = useState<{
     bill: FixedBill; amount: string; notes: string;
@@ -91,7 +103,7 @@ export default function GastosMensaisPage() {
     setLoading(true);
     try {
       const [
-        bills, payments, cards, cardPays, txs, sources, incomes, allSources,
+        bills, payments, cards, cardPays, txs, sources, incomes, allSources, override,
       ] = await Promise.all([
         getFixedBills(),
         getMonthlyBillPayments(month, year),
@@ -101,7 +113,9 @@ export default function GastosMensaisPage() {
         getIncomeSources(month, year),
         getMonthlyIncomes(month, year),
         getIncomeSources(),             // todas as fontes (incluindo avulsas de meses passados)
+        getBalanceOverride(month, year),
       ]);
+      setBalanceOverride(override);
 
       setFixedBills(bills);
       setBillPayments(payments);
@@ -243,6 +257,42 @@ export default function GastosMensaisPage() {
     saveAccConfig(editAccConfig);
     setAccConfig(editAccConfig);
     setAccModal(false);
+  }
+
+  function openOverrideModal() {
+    setOverrideForm({
+      autoZero: balanceOverride?.auto_zero ?? false,
+      amount: String(balanceOverride?.override_amount ?? 0),
+      notes: balanceOverride?.notes ?? "",
+    });
+    setOverrideModal(true);
+  }
+
+  async function saveOverride() {
+    try {
+      await upsertBalanceOverride({
+        month, year,
+        auto_zero: overrideForm.autoZero,
+        override_amount: overrideForm.autoZero ? 0 : Number(overrideForm.amount),
+        notes: overrideForm.notes || null,
+      });
+      setOverrideModal(false);
+      toast("Saldo ajustado com sucesso");
+      await loadAll();
+    } catch {
+      toast("Erro ao salvar ajuste", "error");
+    }
+  }
+
+  async function removeOverride() {
+    try {
+      await deleteBalanceOverride(month, year);
+      setOverrideModal(false);
+      toast("Ajuste removido — saldo calculado automaticamente");
+      await loadAll();
+    } catch {
+      toast("Erro ao remover ajuste", "error");
+    }
   }
 
   async function handleToggleBill(bill: FixedBill, paid: boolean) {
@@ -687,6 +737,218 @@ export default function GastosMensaisPage() {
     );
   }
 
+  // ── Render: vista planilha ─────────────────────────────────────────────────
+
+  function SpreadsheetView() {
+    const accBalance = prevBalance + balance;
+    const saldoMeio = prevBalance + incomeTotal - q1Total;
+
+    const allItems: { name: string; amount: number; dueDay: number | null; paid: boolean; type: "bill" | "card"; installment?: string; id: string; period: string }[] = [];
+
+    // Bills 1-15
+    q1Bills.forEach(b => {
+      const inst = computeInstallment(b, month, year);
+      allItems.push({
+        name: b.name, amount: billAmount(b), dueDay: b.due_day,
+        paid: billPayments.find(p => p.bill_id === b.id)?.paid ?? false,
+        type: "bill", installment: inst ? `${inst.current}/${inst.total}x` : undefined,
+        id: b.id, period: "1-15",
+      });
+    });
+    // Cards 1-15
+    q1Cards.forEach(c => {
+      const total = cardTotals[c.id] ?? 0;
+      if (total > 0) {
+        allItems.push({
+          name: c.name, amount: total, dueDay: c.due_day,
+          paid: cardPayments.find(p => p.card_id === c.id)?.paid ?? false,
+          type: "card", id: c.id, period: "1-15",
+        });
+      }
+    });
+    // Bills 16-30
+    q2Bills.forEach(b => {
+      const inst = computeInstallment(b, month, year);
+      allItems.push({
+        name: b.name, amount: billAmount(b), dueDay: b.due_day,
+        paid: billPayments.find(p => p.bill_id === b.id)?.paid ?? false,
+        type: "bill", installment: inst ? `${inst.current}/${inst.total}x` : undefined,
+        id: b.id, period: "16-30",
+      });
+    });
+    // Cards 16-30
+    q2Cards.forEach(c => {
+      const total = cardTotals[c.id] ?? 0;
+      if (total > 0) {
+        allItems.push({
+          name: c.name, amount: total, dueDay: c.due_day,
+          paid: cardPayments.find(p => p.card_id === c.id)?.paid ?? false,
+          type: "card", id: c.id, period: "16-30",
+        });
+      }
+    });
+
+    const q1Items = allItems.filter(i => i.period === "1-15");
+    const q2Items = allItems.filter(i => i.period === "16-30");
+
+    function SheetRow({ item, onToggle }: { item: typeof allItems[0]; onToggle: (paid: boolean) => void }) {
+      const status = item.paid ? "paid" : item.dueDay && isOverdue(item.dueDay, month, year) ? "overdue" : "pending";
+      return (
+        <div className={`flex items-center gap-2 py-2 px-3 border-b border-slate-100 dark:border-slate-700/30 ${
+          status === "overdue" ? "bg-red-50/50 dark:bg-red-900/10" :
+          status === "paid" ? "bg-emerald-50/30 dark:bg-emerald-900/5" : ""
+        }`}>
+          <Toggle checked={item.paid} onChange={onToggle} />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1.5">
+              {item.type === "card" && <CreditCard size={11} className="text-slate-400 shrink-0" />}
+              <span className={`text-sm truncate ${item.paid ? "line-through text-slate-400" : "text-slate-700 dark:text-slate-200"}`}>
+                {item.name}
+              </span>
+              {item.installment && (
+                <span className="text-xs text-violet-500 font-medium shrink-0">{item.installment}</span>
+              )}
+            </div>
+          </div>
+          {item.dueDay && (
+            <span className={`text-xs shrink-0 ${status === "overdue" ? "text-red-500 font-medium" : "text-slate-400"}`}>
+              dia {item.dueDay}
+            </span>
+          )}
+          <span className={`text-sm font-semibold shrink-0 tabular-nums ${item.paid ? "text-slate-400" : "text-red-600 dark:text-red-400"}`}>
+            -{formatCurrency(item.amount)}
+          </span>
+        </div>
+      );
+    }
+
+    return (
+      <div className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/50 rounded-xl overflow-hidden mb-6">
+        {/* Renda */}
+        <div className="bg-emerald-50 dark:bg-emerald-900/20 px-3 py-2 border-b border-emerald-200 dark:border-emerald-800/30">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400 uppercase">Receitas</span>
+            <span className="text-sm font-bold text-emerald-600">{formatCurrency(incomeTotal)}</span>
+          </div>
+          {incomeSources.map(src => {
+            const mi = monthlyIncomes.find(i => i.source_id === src.id);
+            const amt = mi?.amount ?? src.base_amount;
+            return (
+              <div key={src.id} className="flex items-center justify-between py-1">
+                <span className="text-xs text-emerald-600 dark:text-emerald-400">{src.name}</span>
+                <span className="text-xs font-medium text-emerald-700 dark:text-emerald-300 tabular-nums">+{formatCurrency(amt)}</span>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Saldo anterior */}
+        {prevBalance !== 0 && (
+          <div className="flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-slate-700/30 border-b border-slate-100 dark:border-slate-700/30">
+            <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Saldo mes anterior</span>
+            <span className={`text-sm font-semibold tabular-nums ${prevBalance >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+              {formatCurrency(prevBalance)}
+            </span>
+          </div>
+        )}
+
+        {/* Saldo dia 30 (receita + saldo anterior) */}
+        <div className="flex items-center justify-between px-3 py-2 bg-blue-50/50 dark:bg-blue-900/10 border-b border-blue-100 dark:border-blue-800/30">
+          <span className="text-xs font-bold text-blue-700 dark:text-blue-400">Saldo dia 30 (disponivel)</span>
+          <span className="text-sm font-bold text-blue-600 tabular-nums">{formatCurrency(prevBalance + incomeTotal)}</span>
+        </div>
+
+        {/* Contas 1-15 */}
+        <div className="border-b-2 border-primary-200 dark:border-primary-800/40">
+          <div className="flex items-center justify-between px-3 py-2 bg-primary-50 dark:bg-primary-900/20">
+            <span className="text-xs font-bold text-primary-700 dark:text-primary-400 uppercase">Contas 1ª Quinzena (1-15)</span>
+            <span className="text-sm font-bold text-primary-600">{formatCurrency(q1Total)}</span>
+          </div>
+          {q1Items.map(item => (
+            <SheetRow key={item.id} item={item} onToggle={paid => {
+              if (item.type === "bill") {
+                const bill = q1Bills.find(b => b.id === item.id);
+                if (bill) handleToggleBill(bill, paid);
+              } else {
+                const card = q1Cards.find(c => c.id === item.id);
+                if (card) handleToggleCard(card, paid);
+              }
+            }} />
+          ))}
+          {titheBill && titheBill.period === "1-15" && (
+            <div className="flex items-center gap-2 py-2 px-3 border-b border-slate-100 dark:border-slate-700/30 bg-violet-50/50 dark:bg-violet-900/10">
+              <Toggle checked={tithePayment?.paid ?? false} onChange={v => handleToggleBill(titheBill, v)} />
+              <span className="text-sm text-violet-700 dark:text-violet-300 flex-1">Dizimo (10%)</span>
+              <span className="text-sm font-semibold text-violet-600 tabular-nums">-{formatCurrency(titheDisplayAmt)}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Saldo dia 15 */}
+        <div className={`flex items-center justify-between px-3 py-2.5 ${
+          saldoMeio >= 0
+            ? "bg-emerald-50/70 dark:bg-emerald-900/15 border-b border-emerald-200 dark:border-emerald-800/30"
+            : "bg-red-50/70 dark:bg-red-900/15 border-b border-red-200 dark:border-red-800/30"
+        }`}>
+          <span className="text-xs font-bold text-slate-600 dark:text-slate-300">Saldo dia 15</span>
+          <span className={`text-sm font-bold tabular-nums ${saldoMeio >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+            {formatCurrency(saldoMeio)}
+          </span>
+        </div>
+
+        {/* Contas 16-30 */}
+        <div className="border-b-2 border-amber-200 dark:border-amber-800/40">
+          <div className="flex items-center justify-between px-3 py-2 bg-amber-50 dark:bg-amber-900/20">
+            <span className="text-xs font-bold text-amber-700 dark:text-amber-400 uppercase">Contas 2ª Quinzena (16-30)</span>
+            <span className="text-sm font-bold text-amber-600">{formatCurrency(q2Total)}</span>
+          </div>
+          {q2Items.map(item => (
+            <SheetRow key={item.id} item={item} onToggle={paid => {
+              if (item.type === "bill") {
+                const bill = q2Bills.find(b => b.id === item.id);
+                if (bill) handleToggleBill(bill, paid);
+              } else {
+                const card = q2Cards.find(c => c.id === item.id);
+                if (card) handleToggleCard(card, paid);
+              }
+            }} />
+          ))}
+          {titheBill && titheBill.period === "16-30" && (
+            <div className="flex items-center gap-2 py-2 px-3 border-b border-slate-100 dark:border-slate-700/30 bg-violet-50/50 dark:bg-violet-900/10">
+              <Toggle checked={tithePayment?.paid ?? false} onChange={v => handleToggleBill(titheBill, v)} />
+              <span className="text-sm text-violet-700 dark:text-violet-300 flex-1">Dizimo (10%)</span>
+              <span className="text-sm font-semibold text-violet-600 tabular-nums">-{formatCurrency(titheDisplayAmt)}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Saldo final */}
+        <div className={`flex items-center justify-between px-3 py-3 ${
+          accBalance >= 0
+            ? "bg-emerald-50 dark:bg-emerald-900/20"
+            : "bg-red-50 dark:bg-red-900/20"
+        }`}>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-bold text-slate-700 dark:text-slate-200">Saldo Final</span>
+            {balanceOverride && (
+              <span className="text-xs px-1.5 py-0.5 rounded-full bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400 font-medium">
+                {balanceOverride.auto_zero ? "Zerado" : "Ajustado"}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <span className={`text-base font-bold tabular-nums ${accBalance >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+              {formatCurrency(accBalance)}
+            </span>
+            <button onClick={openOverrideModal} title="Ajustar saldo" className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition-colors">
+              <Sliders size={12} className="text-violet-500" />
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // ── Render: fluxo de caixa ────────────────────────────────────────────────
 
   function FluxoCaixa() {
@@ -755,16 +1017,35 @@ export default function GastosMensaisPage() {
             : "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800/30"
         }`}>
           <div>
-            <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">Saldo final</p>
+            <div className="flex items-center gap-2">
+              <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">Saldo final</p>
+              {balanceOverride && (
+                <span className="text-xs px-1.5 py-0.5 rounded-full bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400 font-medium">
+                  {balanceOverride.auto_zero ? "Zerado" : "Ajustado"}
+                </span>
+              )}
+            </div>
             {prevBalance !== 0 && (
               <p className="text-xs text-slate-400 dark:text-slate-500">
                 Mês: {balance >= 0 ? "+" : ""}{formatCurrency(balance)}
               </p>
             )}
+            {balanceOverride?.notes && (
+              <p className="text-xs text-violet-500 italic mt-0.5">{balanceOverride.notes}</p>
+            )}
           </div>
-          <span className={`text-base font-bold ${accBalance >= 0 ? "text-emerald-600" : "text-red-500"}`}>
-            {accBalance >= 0 ? "+" : ""}{formatCurrency(accBalance)}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className={`text-base font-bold ${accBalance >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+              {accBalance >= 0 ? "+" : ""}{formatCurrency(accBalance)}
+            </span>
+            <button
+              onClick={openOverrideModal}
+              title="Ajustar saldo deste mês"
+              className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
+            >
+              <Sliders size={13} className="text-violet-500" />
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -776,6 +1057,27 @@ export default function GastosMensaisPage() {
     <div className="p-3 md:p-6 min-h-screen">
       <PageHeader title="Gastos Mensais" subtitle="Controle de pagamentos por quinzena">
         <div className="flex items-center gap-2">
+          {/* View toggle */}
+          <div className="flex bg-slate-100 dark:bg-slate-700/60 rounded-lg p-0.5 text-xs">
+            <button
+              onClick={() => setViewMode("cards")}
+              className={`px-2 py-1 rounded-md font-medium transition-all flex items-center gap-1 ${
+                viewMode === "cards"
+                  ? "bg-white dark:bg-slate-600 text-slate-700 dark:text-slate-100 shadow-sm"
+                  : "text-slate-500 dark:text-slate-400"
+              }`}
+              title="Visualização em cards"
+            ><LayoutGrid size={12} /> Cards</button>
+            <button
+              onClick={() => setViewMode("planilha")}
+              className={`px-2 py-1 rounded-md font-medium transition-all flex items-center gap-1 ${
+                viewMode === "planilha"
+                  ? "bg-white dark:bg-slate-600 text-slate-700 dark:text-slate-100 shadow-sm"
+                  : "text-slate-500 dark:text-slate-400"
+              }`}
+              title="Visualização tipo planilha"
+            ><LayoutList size={12} /> Planilha</button>
+          </div>
           <button
             onClick={async () => {
               const { exportMonth } = await import("@/lib/exportExcel");
@@ -793,20 +1095,88 @@ export default function GastosMensaisPage() {
 
       <FluxoCaixa />
 
-      {/* Dízimo */}
-      <TitheSection />
+      {viewMode === "cards" ? (
+        <>
+          {/* Dízimo */}
+          <TitheSection />
 
-      {/* Quinzenas */}
-      <div className="space-y-6">
-        <QuinzenaSection
-          label="1ª Quinzena" subtitle="dias 1 a 15"
-          bills={q1Bills} cards={q1Cards} totalQ={q1Total}
-        />
-        <QuinzenaSection
-          label="2ª Quinzena" subtitle="dias 16 a 30"
-          bills={q2Bills} cards={q2Cards} totalQ={q2Total}
-        />
-      </div>
+          {/* Quinzenas */}
+          <div className="space-y-6">
+            <QuinzenaSection
+              label="1ª Quinzena" subtitle="dias 1 a 15"
+              bills={q1Bills} cards={q1Cards} totalQ={q1Total}
+            />
+            <QuinzenaSection
+              label="2ª Quinzena" subtitle="dias 16 a 30"
+              bills={q2Bills} cards={q2Cards} totalQ={q2Total}
+            />
+          </div>
+        </>
+      ) : (
+        <SpreadsheetView />
+      )}
+
+      {/* Modal: ajustar saldo do mês (override) */}
+      {overrideModal && (
+        <Modal open onClose={() => setOverrideModal(false)} title="Ajustar Saldo do Mês" size="sm">
+          <div className="space-y-4">
+            <div className="bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800/30 rounded-lg p-3">
+              <p className="text-xs text-violet-700 dark:text-violet-300 font-medium mb-1">
+                Quando usar este ajuste?
+              </p>
+              <p className="text-xs text-violet-600 dark:text-violet-400">
+                Quando um emprestimo cobriu o deficit do mes ou quando o saldo real e diferente do calculado.
+                O proximo mes usara o valor ajustado como saldo anterior.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Zerar saldo</p>
+                <p className="text-xs text-slate-400 dark:text-slate-500">Emprestimo cobriu o deficit</p>
+              </div>
+              <Toggle
+                checked={overrideForm.autoZero}
+                onChange={v => setOverrideForm(p => ({ ...p, autoZero: v, amount: v ? "0" : p.amount }))}
+              />
+            </div>
+
+            {!overrideForm.autoZero && (
+              <div>
+                <label className="label">Saldo real deste mes (R$)</label>
+                <input
+                  className="input" type="number" step="0.01"
+                  value={overrideForm.amount}
+                  onChange={e => setOverrideForm(p => ({ ...p, amount: e.target.value }))}
+                />
+                <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+                  Saldo calculado: {formatCurrency(prevBalance + balance)}
+                </p>
+              </div>
+            )}
+
+            <div>
+              <label className="label">Observacao (opcional)</label>
+              <input
+                className="input"
+                placeholder="Ex: Emprestimo SIM cobriu deficit, Peguei emprestado..."
+                value={overrideForm.notes}
+                onChange={e => setOverrideForm(p => ({ ...p, notes: e.target.value }))}
+              />
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              {balanceOverride && (
+                <button onClick={removeOverride} className="btn-danger flex-1">
+                  Remover ajuste
+                </button>
+              )}
+              <button onClick={() => setOverrideModal(false)} className="btn-secondary flex-1">Cancelar</button>
+              <button onClick={saveOverride} className="btn-primary flex-1">Salvar</button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {/* Modal: configurar saldo acumulado */}
       {accModal && (

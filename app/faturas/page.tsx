@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CreditCard, Plus, Trash2, TrendingDown, AlertTriangle } from "lucide-react";
+import { CreditCard, Plus, Trash2, TrendingDown, AlertTriangle, Pencil } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer,
@@ -10,6 +10,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { MonthSelector } from "@/components/ui/MonthSelector";
 import { Toggle } from "@/components/ui/Toggle";
 import { Modal } from "@/components/ui/Modal";
+import { useToast } from "@/components/ui/Toast";
 import {
   getCreditCards, getCardTransactionsByCard, getCardTransactions,
   getMonthlyCardPayments, toggleCardPaid,
@@ -34,6 +35,9 @@ export default function FaturasPage() {
   const [txModal, setTxModal] = useState(false);
   const [editTx, setEditTx] = useState<Partial<CardTransaction>>({});
   const [loading, setLoading] = useState(false);
+  const [editingTxId, setEditingTxId] = useState<string | null>(null);
+
+  const { toast } = useToast();
 
   useEffect(() => { loadCards(); }, []);
   useEffect(() => { if (cards.length > 0) loadMonthData(); }, [month, year, cards, selectedCard]);
@@ -81,21 +85,34 @@ export default function FaturasPage() {
   async function saveTx() {
     if (!editTx.description || !editTx.amount || !selectedCard) return;
     setLoading(true);
-    await upsertCardTransaction({
-      installment_current: 1, installment_total: 1,
-      card_id: selectedCard.id,
-      month, year,
-      ...editTx,
-      amount: -(Math.abs(Number(editTx.amount))),
-    });
-    setTxModal(false); setEditTx({});
-    await loadMonthData();
+    try {
+      await upsertCardTransaction({
+        installment_current: 1, installment_total: 1,
+        card_id: selectedCard.id,
+        month, year,
+        ...editTx,
+        amount: -(Math.abs(Number(editTx.amount))),
+      });
+      setTxModal(false); setEditTx({});
+      toast(editTx.id ? "Lancamento atualizado" : "Lancamento adicionado");
+      await loadMonthData();
+    } catch { toast("Erro ao salvar lancamento", "error"); }
     setLoading(false);
   }
 
+  async function saveInlineEdit(tx: CardTransaction, newAmount: number, newDesc: string) {
+    try {
+      await upsertCardTransaction({ ...tx, amount: -Math.abs(newAmount), description: newDesc });
+      setEditingTxId(null);
+      toast("Lancamento atualizado");
+      await loadMonthData();
+    } catch { toast("Erro ao atualizar", "error"); }
+  }
+
   async function removeTx(id: string) {
-    if (!confirm("Remover este lançamento?")) return;
+    if (!confirm("Remover este lancamento?")) return;
     await deleteCardTransaction(id);
+    toast("Lancamento removido");
     await loadMonthData();
   }
 

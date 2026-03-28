@@ -1,7 +1,7 @@
 import { supabase } from "./supabase";
 import type {
   IncomeSource, FixedBill, CreditCard, CardTransaction, Category,
-  MonthlyBillPayment, MonthlyCardPayment, MonthlyIncome,
+  MonthlyBillPayment, MonthlyCardPayment, MonthlyIncome, MonthlyBalanceOverride,
 } from "@/types";
 
 // ─── Categories ───────────────────────────────────────────────────────────────
@@ -360,6 +360,48 @@ export async function getCardTotalsByMonth(year: number): Promise<Record<number,
     })
   );
   return results;
+}
+
+// ─── Balance Overrides ───────────────────────────────────────────────────────
+
+export async function getBalanceOverride(month: number, year: number) {
+  const { data, error } = await supabase
+    .from("monthly_balance_overrides")
+    .select("*")
+    .eq("month", month)
+    .eq("year", year)
+    .maybeSingle();
+  if (error) throw error;
+  return data as MonthlyBalanceOverride | null;
+}
+
+export async function getBalanceOverrides(year: number) {
+  const { data, error } = await supabase
+    .from("monthly_balance_overrides")
+    .select("*")
+    .eq("year", year)
+    .order("month");
+  if (error) throw error;
+  return data as MonthlyBalanceOverride[];
+}
+
+export async function upsertBalanceOverride(override: Partial<MonthlyBalanceOverride>) {
+  const { data, error } = await supabase
+    .from("monthly_balance_overrides")
+    .upsert(override, { onConflict: "month,year" })
+    .select()
+    .single();
+  if (error) throw error;
+  return data as MonthlyBalanceOverride;
+}
+
+export async function deleteBalanceOverride(month: number, year: number) {
+  const { error } = await supabase
+    .from("monthly_balance_overrides")
+    .delete()
+    .eq("month", month)
+    .eq("year", year);
+  if (error) throw error;
 }
 
 /** Todas as transações de cartão de um ano (query única para análise anual) */

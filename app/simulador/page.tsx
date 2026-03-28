@@ -12,12 +12,14 @@ import {
   getMonthlyBillPayments, getCardTransactions,
 } from "@/lib/queries";
 import { formatCurrency, getMonthName, computeInstallment, getAccConfig } from "@/lib/utils";
+import { calculateAmortization, loanSummary } from "@/lib/loan";
+import type { LoanParams, AmortizationRow } from "@/lib/loan";
 import { MONTH_SHORT } from "@/types";
 import type { FixedBill } from "@/types";
 import {
   Plus, Trash2, ChevronLeft, ChevronRight,
   TrendingUp, TrendingDown, Wallet, FlaskConical,
-  ArrowUpRight, ArrowDownRight,
+  ArrowUpRight, ArrowDownRight, Calculator, ChevronDown as ChevDown,
 } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -27,7 +29,8 @@ type ModType =
   | "add_expense"       // Nova despesa mensal
   | "income_change"     // Alterar renda (+/-)
   | "one_time_income"   // Receita avulsa
-  | "one_time_expense"; // Despesa avulsa
+  | "one_time_expense"  // Despesa avulsa
+  | "loan";             // Empréstimo / Financiamento
 
 interface ScenarioMod {
   id: string;
@@ -36,6 +39,10 @@ interface ScenarioMod {
   amount: number;
   startMonth: number;
   endMonth: number;
+  // Campos de empréstimo
+  loanRate?: number;         // taxa mensal (ex: 0.02 = 2%)
+  loanInstallments?: number; // número de parcelas
+  loanMethod?: "price" | "sac";
 }
 
 interface MonthData {
@@ -55,16 +62,18 @@ const MOD_LABELS: Record<ModType, string> = {
   remove_bill:      "Quitar / remover conta fixa",
   add_expense:      "Nova despesa mensal",
   income_change:    "Alterar renda mensal (+/-)",
-  one_time_income:  "Receita avulsa (único mês)",
-  one_time_expense: "Despesa avulsa (único mês)",
+  one_time_income:  "Receita avulsa (unico mes)",
+  one_time_expense: "Despesa avulsa (unico mes)",
+  loan:             "Emprestimo / Financiamento",
 };
 
 const MOD_EXAMPLES: Record<ModType, string> = {
-  remove_bill:      "Ex: quitar empréstimo, vender carro",
+  remove_bill:      "Ex: quitar emprestimo, vender carro",
   add_expense:      "Ex: novo financiamento, academia",
-  income_change:    "Ex: +1.000 aumento, -500 redução",
-  one_time_income:  "Ex: venda de veículo, FGTS, bônus",
-  one_time_expense: "Ex: IPTU à vista, cirurgia, viagem",
+  income_change:    "Ex: +1.000 aumento, -500 reducao",
+  one_time_income:  "Ex: venda de veiculo, FGTS, bonus",
+  one_time_expense: "Ex: IPTU a vista, cirurgia, viagem",
+  loan:             "Ex: emprestimo pessoal, financiamento de carro",
 };
 
 const MONTH_OPTS = Array.from({ length: 12 }, (_, i) => i + 1);
@@ -109,6 +118,27 @@ function applyMods(base: MonthData[], mods: ScenarioMod[], bills: FixedBill[], y
         case "income_change":    receitas   += mod.amount; break;
         case "one_time_income":  receitas   += mod.amount; break;
         case "one_time_expense": billsTotal += mod.amount; break;
+        case "loan": {
+          if (!mod.amount || !mod.loanInstallments || mod.loanRate == null) break;
+          const rows = calculateAmortization({
+            amount: mod.amount,
+            monthlyRate: mod.loanRate / 100,
+            installments: mod.loanInstallments,
+            method: mod.loanMethod ?? "price",
+            startMonth: mod.startMonth,
+            startYear: year,
+          });
+          // No mês de início: recebe o valor do empréstimo
+          if (row.month === mod.startMonth) {
+            receitas += mod.amount;
+          }
+          // Parcelas: aplica a cada mês correspondente
+          const loanRow = rows.find(r => r.month === row.month && r.year === year);
+          if (loanRow) {
+            billsTotal += loanRow.payment;
+          }
+          break;
+        }
       }
     }
 
@@ -269,7 +299,11 @@ export default function SimuladorPage() {
     [scenarioName]: Math.round(scenarioData[i]?.saldoAcumulado ?? 0),
   }));
 
-  const hasMods = mods.some(m => m.type === "remove_bill" ? !!m.billId : m.amount !== 0);
+  const hasMods = mods.some(m => {
+    if (m.type === "remove_bill") return !!m.billId;
+    if (m.type === "loan") return m.amount > 0 && (m.loanInstallments ?? 0) > 0;
+    return m.amount !== 0;
+  });
 
   function addMod() { setMods(ms => [...ms, newMod()]); }
   function removeMod(id: string) { setMods(ms => ms.filter(m => m.id !== id)); }
@@ -379,6 +413,57 @@ export default function SimuladorPage() {
                       {/* Campos dinâmicos */}
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pl-7">
 
+                        {/* Empréstimo */}
+                        {mod.type === "loan" && (
+                          <>
+                            <div>
+                              <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Valor do emprestimo (R$)</label>
+                              <input
+                                type="number" step="100"
+                                value={mod.amount || ""}
+                                onChange={e => updateMod(mod.id, { amount: parseFloat(e.target.value) || 0 })}
+                                placeholder="10000"
+                                className="w-full text-xs bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600
+                                           rounded-lg px-2.5 py-1.5 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Taxa mensal (%)</label>
+                              <input
+                                type="number" step="0.1"
+                                value={mod.loanRate ?? ""}
+                                onChange={e => updateMod(mod.id, { loanRate: parseFloat(e.target.value) || 0 })}
+                                placeholder="2.0"
+                                className="w-full text-xs bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600
+                                           rounded-lg px-2.5 py-1.5 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Parcelas</label>
+                              <input
+                                type="number" min="1" max="360"
+                                value={mod.loanInstallments ?? ""}
+                                onChange={e => updateMod(mod.id, { loanInstallments: parseInt(e.target.value) || 0 })}
+                                placeholder="12"
+                                className="w-full text-xs bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600
+                                           rounded-lg px-2.5 py-1.5 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Metodo</label>
+                              <select
+                                value={mod.loanMethod ?? "price"}
+                                onChange={e => updateMod(mod.id, { loanMethod: e.target.value as "price" | "sac" })}
+                                className="w-full text-xs bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600
+                                           rounded-lg px-2.5 py-1.5 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                              >
+                                <option value="price">Price (parcela fixa)</option>
+                                <option value="sac">SAC (amortizacao fixa)</option>
+                              </select>
+                            </div>
+                          </>
+                        )}
+
                         {/* Conta (remove_bill) */}
                         {mod.type === "remove_bill" && (
                           <div className="sm:col-span-1">
@@ -399,8 +484,8 @@ export default function SimuladorPage() {
                           </div>
                         )}
 
-                        {/* Valor (tudo exceto remove_bill) */}
-                        {mod.type !== "remove_bill" && (
+                        {/* Valor (tudo exceto remove_bill e loan) */}
+                        {mod.type !== "remove_bill" && mod.type !== "loan" && (
                           <div>
                             <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">
                               {mod.type === "income_change" ? "Valor R$ (+/-)" : "Valor R$"}
@@ -419,7 +504,7 @@ export default function SimuladorPage() {
                         {/* De (mês início) */}
                         <div>
                           <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">
-                            {isOneTime ? "Mês" : "A partir de"}
+                            {isOneTime ? "Mes" : mod.type === "loan" ? "Mes do emprestimo" : "A partir de"}
                           </label>
                           <select
                             value={mod.startMonth}
@@ -437,8 +522,8 @@ export default function SimuladorPage() {
                           </select>
                         </div>
 
-                        {/* Até (mês fim) — oculto para one-time */}
-                        {!isOneTime && (
+                        {/* Até (mês fim) — oculto para one-time e loan */}
+                        {!isOneTime && mod.type !== "loan" && (
                           <div>
                             <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Até</label>
                             <select
@@ -471,7 +556,62 @@ export default function SimuladorPage() {
                           </div>
                         );
                       })()}
-                      {mod.type !== "remove_bill" && mod.amount !== 0 && (() => {
+                      {/* Loan amortization preview */}
+                      {mod.type === "loan" && mod.amount > 0 && (mod.loanInstallments ?? 0) > 0 && (mod.loanRate ?? 0) >= 0 && (() => {
+                        const rows = calculateAmortization({
+                          amount: mod.amount,
+                          monthlyRate: (mod.loanRate ?? 0) / 100,
+                          installments: mod.loanInstallments ?? 12,
+                          method: mod.loanMethod ?? "price",
+                          startMonth: mod.startMonth,
+                          startYear: year,
+                        });
+                        const summary = loanSummary(rows);
+                        return (
+                          <div className="pl-7 space-y-2">
+                            <div className="flex flex-wrap gap-3 text-xs">
+                              <span className="text-slate-500">Parcela: <b className="text-red-500">{formatCurrency(summary.firstPayment)}/mes</b></span>
+                              {summary.firstPayment !== summary.lastPayment && (
+                                <span className="text-slate-500">Ultima: <b className="text-red-500">{formatCurrency(summary.lastPayment)}</b></span>
+                              )}
+                              <span className="text-slate-500">Total pago: <b className="text-slate-700 dark:text-slate-200">{formatCurrency(summary.totalPaid)}</b></span>
+                              <span className="text-slate-500">Juros: <b className="text-amber-600">{formatCurrency(summary.totalInterest)}</b></span>
+                            </div>
+                            <details className="text-xs">
+                              <summary className="cursor-pointer text-primary-600 dark:text-primary-400 font-medium flex items-center gap-1">
+                                <Calculator size={11} /> Ver tabela de amortizacao ({rows.length} parcelas)
+                              </summary>
+                              <div className="mt-2 max-h-48 overflow-y-auto border border-slate-200 dark:border-slate-700 rounded-lg">
+                                <table className="w-full text-xs">
+                                  <thead className="bg-slate-50 dark:bg-slate-800 sticky top-0">
+                                    <tr>
+                                      <th className="text-left px-2 py-1.5 text-slate-500">#</th>
+                                      <th className="text-left px-2 py-1.5 text-slate-500">Mes</th>
+                                      <th className="text-right px-2 py-1.5 text-slate-500">Parcela</th>
+                                      <th className="text-right px-2 py-1.5 text-slate-500">Juros</th>
+                                      <th className="text-right px-2 py-1.5 text-slate-500">Amort.</th>
+                                      <th className="text-right px-2 py-1.5 text-slate-500">Saldo</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {rows.map(r => (
+                                      <tr key={r.installment} className="border-t border-slate-100 dark:border-slate-700/30">
+                                        <td className="px-2 py-1 text-slate-400">{r.installment}</td>
+                                        <td className="px-2 py-1 text-slate-600 dark:text-slate-300">{getMonthName(r.month).slice(0,3)}/{r.year}</td>
+                                        <td className="px-2 py-1 text-right text-red-500 tabular-nums">{formatCurrency(r.payment)}</td>
+                                        <td className="px-2 py-1 text-right text-amber-500 tabular-nums">{formatCurrency(r.interest)}</td>
+                                        <td className="px-2 py-1 text-right text-emerald-500 tabular-nums">{formatCurrency(r.principal)}</td>
+                                        <td className="px-2 py-1 text-right text-slate-600 dark:text-slate-300 tabular-nums">{formatCurrency(r.remaining)}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </details>
+                          </div>
+                        );
+                      })()}
+                      {mod.type !== "remove_bill" && mod.type !== "loan" && mod.amount !== 0 && (() => {
                         const months = isOneTime ? 1 : mod.endMonth - mod.startMonth + 1;
                         const isPositive = mod.type === "income_change" || mod.type === "one_time_income"
                           ? mod.amount > 0

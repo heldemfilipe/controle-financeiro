@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import {
   TrendingUp, TrendingDown, Wallet, CreditCard,
   ChevronLeft, ChevronRight, ArrowUpRight, ArrowDownRight,
-  Trophy, AlertCircle, Download,
+  Trophy, AlertCircle, Download, Info,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -12,11 +12,8 @@ import {
 } from "recharts";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ChartTooltip } from "@/components/ui/ChartTooltip";
-import {
-  getMonthlyIncomes, getMonthlyBillPayments,
-  getCardTransactions, getFixedBills, getIncomeSources,
-} from "@/lib/queries";
-import { formatCurrency, getMonthName, computeInstallment, getAccConfig } from "@/lib/utils";
+import { formatCurrency, getMonthName } from "@/lib/utils";
+import { computeYearBalances, clearBalanceCache } from "@/lib/balance";
 import { MONTH_SHORT } from "@/types";
 
 interface MonthData {
@@ -29,6 +26,7 @@ interface MonthData {
   despesas: number;
   saldo: number;
   saldoAcumulado: number;
+  hasOverride: boolean;
 }
 
 export default function GastosAnuaisPage() {
@@ -41,94 +39,31 @@ export default function GastosAnuaisPage() {
   async function loadYear() {
     setLoading(true);
     try {
-      const allBills = await getFixedBills();
-      const sources  = await getIncomeSources();
-      const cfg = getAccConfig();
+      clearBalanceCache();
+      const yearData = await computeYearBalances(year);
 
-      // Compute carry-over: saldoInicial + saldo acumulado de anos anteriores
-      let yearStartBalance = cfg.saldoInicial;
-      if (year > cfg.startYear) {
-        const prevEntries: { m: number; y: number }[] = [];
-        for (let y = cfg.startYear; y < year; y++) {
-          const fromM = y === cfg.startYear ? cfg.startMonth : 1;
-          for (let m = fromM; m <= 12; m++) prevEntries.push({ m, y });
-        }
-        const prevSaldos = await Promise.all(
-          prevEntries.map(async ({ m, y: py }) => {
-            const [inc, bp, txs] = await Promise.all([
-              getMonthlyIncomes(m, py),
-              getMonthlyBillPayments(m, py),
-              getCardTransactions(m, py),
-            ]);
-            const rec = sources.reduce((s, src) => {
-              const mi = inc.find(x => x.source_id === src.id);
-              if (src.is_recurring === false) {
-                if (src.one_time_month !== m || src.one_time_year !== py) return s;
-                return s + (mi?.amount ?? src.base_amount);
-              }
-              return s + (mi?.amount ?? src.base_amount);
-            }, 0);
-            const paidIds = bp.map((b: any) => b.bill_id);
-            const missing = allBills.filter(b => {
-              if (paidIds.includes(b.id)) return false;
-              if (!b.installment_total) return true;
-              if (b.installment_start_month == null || b.installment_start_year == null) return true;
-              return computeInstallment(b, m, py) !== null;
-            });
-            const billsTotal = [
-              ...bp.map((b: any) => b.amount ?? b.fixed_bills?.amount ?? 0),
-              ...missing.map((b: any) => b.amount),
-            ].reduce((s: number, v: number) => s + v, 0);
-            const cartoes = txs.reduce((s: number, t: any) => s - t.amount, 0);
-            return rec - billsTotal - cartoes;
-          })
-        );
-        yearStartBalance += prevSaldos.reduce((s, v) => s + v, 0);
-      }
+      const months: MonthData[] = yearData.map((md, i) => {
+        const essenciais = md.billsByCategory["essencial"] ?? 0;
+        const outros = Object.entries(md.billsByCategory)
+          .filter(([k]) => k !== "essencial")
+          .reduce((s, [, v]) => s + v, 0);
+        const cartoes = md.totalCards;
+        const despesas = md.totalBills + cartoes;
 
-      const rawMonths = await Promise.all(
-        Array.from({ length: 12 }, async (_, i) => {
-          const month = i + 1;
-          const [incomes, billPays, txs] = await Promise.all([
-            getMonthlyIncomes(month, year),
-            getMonthlyBillPayments(month, year),
-            getCardTransactions(month, year),
-          ]);
+        return {
+          month: i + 1,
+          name: MONTH_SHORT[i],
+          receitas: md.totalIncome,
+          essenciais,
+          outros,
+          cartoes,
+          despesas,
+          saldo: md.balance,
+          saldoAcumulado: md.saldoAcumulado ?? 0,
+          hasOverride: md.hasOverride,
+        };
+      });
 
-          const receitas = sources.reduce((s, src) => {
-            const mi = incomes.find(i => i.source_id === src.id);
-            if (src.is_recurring === false) {
-              if (src.one_time_month !== month || src.one_time_year !== year) return s;
-              return s + (mi?.amount ?? src.base_amount);
-            }
-            return s + (mi?.amount ?? src.base_amount);
-          }, 0);
-
-          const paidBillIds  = billPays.map(b => b.bill_id);
-          const missingBills = allBills.filter(b => {
-            if (paidBillIds.includes(b.id)) return false;
-            if (!b.installment_total) return true;
-            if (b.installment_start_month == null || b.installment_start_year == null) return true;
-            return computeInstallment(b, month, year) !== null;
-          });
-          const allMonthBills = [
-            ...billPays.map(b => ({
-              amount: b.amount ?? b.fixed_bills?.amount ?? 0,
-              category: b.fixed_bills?.category ?? "outros",
-            })),
-            ...missingBills.map(b => ({ amount: b.amount, category: b.category })),
-          ];
-          const essenciais = allMonthBills.filter(b => b.category === "essencial").reduce((s, b) => s + b.amount, 0);
-          const outros      = allMonthBills.filter(b => b.category !== "essencial").reduce((s, b) => s + b.amount, 0);
-          const cartoes     = txs.reduce((s, t) => s - t.amount, 0);
-          const despesas    = essenciais + outros + cartoes;
-
-          return { month, name: MONTH_SHORT[i], receitas, essenciais, outros, cartoes, despesas, saldo: receitas - despesas, saldoAcumulado: 0 };
-        })
-      );
-
-      let acc = yearStartBalance;
-      const months = rawMonths.map(m => { acc += m.saldo; return { ...m, saldoAcumulado: acc }; });
       setData(months);
     } finally {
       setLoading(false);
@@ -285,6 +220,11 @@ export default function GastosAnuaisPage() {
                         <td className="py-2 pr-2 font-medium text-slate-700 dark:text-slate-200 whitespace-nowrap">
                           {getMonthName(row.month)}
                           {isCurrent && <span className="ml-1.5 text-xs bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400 px-1.5 py-0.5 rounded-full">atual</span>}
+                          {row.hasOverride && (
+                            <span className="ml-1 text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded-full" title="Saldo ajustado">
+                              <Info size={9} className="inline -mt-0.5" />
+                            </span>
+                          )}
                         </td>
                         <td className="py-2 px-2 text-right font-medium text-emerald-700 dark:text-emerald-400 tabular-nums">
                           {row.receitas > 0 ? formatCurrency(row.receitas) : <span className="text-slate-300 dark:text-slate-600">—</span>}
@@ -347,7 +287,7 @@ export default function GastosAnuaisPage() {
             {/* Composição das Despesas */}
             <div className="card transition-colors">
               <h3 className="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wide mb-3">Composição das Despesas</h3>
-              <ResponsiveContainer width="100%" height={220}>
+              <div className="overflow-x-auto -mx-4 px-4"><ResponsiveContainer width="100%" height={220} minWidth={400}>
                 <BarChart data={data} margin={{ top: 0, right: 5, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                   <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#94a3b8" }} />
@@ -358,13 +298,13 @@ export default function GastosAnuaisPage() {
                   <Bar dataKey="outros"     name="Outros"     stackId="a" fill="#f59e0b" />
                   <Bar dataKey="cartoes"    name="Cartões"    stackId="a" fill="#ef4444" radius={[3, 3, 0, 0]} />
                 </BarChart>
-              </ResponsiveContainer>
+              </ResponsiveContainer></div>
             </div>
 
             {/* Saldo Acumulado */}
             <div className="card transition-colors">
               <h3 className="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wide mb-3">Saldo Acumulado</h3>
-              <ResponsiveContainer width="100%" height={220}>
+              <div className="overflow-x-auto -mx-4 px-4"><ResponsiveContainer width="100%" height={220} minWidth={400}>
                 <AreaChart data={data} margin={{ top: 0, right: 5, left: 0, bottom: 0 }}>
                   <defs>
                     <linearGradient id="saldoGrad" x1="0" y1="0" x2="0" y2="1">
@@ -379,7 +319,7 @@ export default function GastosAnuaisPage() {
                   <ReferenceLine y={0} stroke="#94a3b8" strokeDasharray="4 4" />
                   <Area type="monotone" dataKey="saldoAcumulado" name="Saldo Acumulado" stroke="#6366f1" fill="url(#saldoGrad)" strokeWidth={2} dot={{ r: 3 }} />
                 </AreaChart>
-              </ResponsiveContainer>
+              </ResponsiveContainer></div>
             </div>
           </div>
         </>

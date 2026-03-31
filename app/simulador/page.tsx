@@ -657,7 +657,7 @@ export default function SimuladorPage() {
                     scen: totScen.despesas,
                     diff: delta.despesas,
                     icon: TrendingDown,
-                    inverse: true,   // negativo = bom (menos despesa)
+                    inverse: true,
                   },
                   {
                     label: "Saldo acum. final",
@@ -691,12 +691,137 @@ export default function SimuladorPage() {
                         </span>
                       </div>
                       <p className={`text-xs font-semibold mt-1 ${neutral ? "text-slate-400" : good ? "text-emerald-600" : "text-red-500"}`}>
-                        {neutral ? "Sem diferença"
-                          : `${diff > 0 ? "+" : ""}${formatCurrency(diff)} ${good ? "✓ melhor" : "✗ pior"}`}
+                        {neutral ? "Sem diferenca"
+                          : `${diff > 0 ? "+" : ""}${formatCurrency(diff)} / ${good ? "melhor" : "pior"}`}
                       </p>
                     </div>
                   );
                 })}
+              </div>
+
+              {/* Tabela comparativa mês a mês */}
+              <div className="card overflow-hidden">
+                <h3 className="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wide mb-3">
+                  Comparativo Mês a Mês — {year}
+                </h3>
+                <div className="overflow-x-auto -mx-4 px-4">
+                  <table className="w-full text-xs min-w-[420px]">
+                    <thead>
+                      <tr className="border-b-2 border-slate-200 dark:border-slate-600">
+                        <th className="text-left py-2 text-slate-400 uppercase tracking-wide font-semibold" rowSpan={2}>Mês</th>
+                        <th className="text-center py-1 px-1 text-emerald-600 uppercase tracking-wide font-semibold border-b border-emerald-200 dark:border-emerald-800/30 hidden lg:table-cell" colSpan={3}>Receitas</th>
+                        <th className="text-center py-1 px-1 text-red-500 uppercase tracking-wide font-semibold border-b border-red-200 dark:border-red-800/30 hidden lg:table-cell" colSpan={3}>Despesas</th>
+                        <th className="text-center py-1 px-1 text-slate-500 dark:text-slate-400 uppercase tracking-wide font-semibold border-b border-slate-200 dark:border-slate-600 hidden sm:table-cell" colSpan={3}>Saldo Mensal</th>
+                        <th className="text-center py-1 px-1 text-primary-600 uppercase tracking-wide font-semibold border-b border-primary-200 dark:border-primary-800/30" colSpan={3}>Acumulado</th>
+                      </tr>
+                      <tr className="border-b border-slate-100 dark:border-slate-700/50">
+                        {/* Receitas sub-headers */}
+                        <th className="text-right py-1.5 px-1 text-slate-400 text-[10px] uppercase hidden lg:table-cell">Atual</th>
+                        <th className="text-right py-1.5 px-1 text-slate-400 text-[10px] uppercase hidden lg:table-cell">Cen.</th>
+                        <th className="text-right py-1.5 px-1 text-slate-400 text-[10px] uppercase hidden lg:table-cell">Δ</th>
+                        {/* Despesas sub-headers */}
+                        <th className="text-right py-1.5 px-1 text-slate-400 text-[10px] uppercase hidden lg:table-cell">Atual</th>
+                        <th className="text-right py-1.5 px-1 text-slate-400 text-[10px] uppercase hidden lg:table-cell">Cen.</th>
+                        <th className="text-right py-1.5 px-1 text-slate-400 text-[10px] uppercase hidden lg:table-cell">Δ</th>
+                        {/* Saldo mensal sub-headers */}
+                        <th className="text-right py-1.5 px-1 text-slate-400 text-[10px] uppercase hidden sm:table-cell">Atual</th>
+                        <th className="text-right py-1.5 px-1 text-slate-400 text-[10px] uppercase hidden sm:table-cell">Cen.</th>
+                        <th className="text-right py-1.5 px-1 text-slate-400 text-[10px] uppercase hidden sm:table-cell">Δ</th>
+                        {/* Acumulado sub-headers */}
+                        <th className="text-right py-1.5 px-1 text-slate-400 text-[10px] uppercase">Atual</th>
+                        <th className="text-right py-1.5 px-1 text-slate-400 text-[10px] uppercase">Cen.</th>
+                        <th className="text-right py-1.5 px-1 text-slate-400 text-[10px] uppercase">Δ</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {baseData.map((row, i) => {
+                        const sc = scenarioData[i];
+                        const dRec = sc.receitas - row.receitas;
+                        const dDesp = sc.despesas - row.despesas;
+                        const dSaldo = sc.saldo - row.saldo;
+                        const dAcum = sc.saldoAcumulado - row.saldoAcumulado;
+                        const changed = dRec !== 0 || dDesp !== 0;
+                        return (
+                          <tr key={row.month}
+                            className={`border-b border-slate-50 dark:border-slate-700/30 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors ${
+                              changed ? "bg-primary-50/30 dark:bg-primary-900/5" : ""
+                            }`}
+                          >
+                            <td className="py-2 pr-2 font-semibold text-slate-700 dark:text-slate-200 whitespace-nowrap">
+                              {getMonthName(row.month)}
+                              {changed && <span className="ml-1 w-1.5 h-1.5 rounded-full bg-primary-400 inline-block align-middle" />}
+                            </td>
+                            {/* Receitas */}
+                            <td className="py-2 px-1 text-right text-emerald-600 tabular-nums hidden lg:table-cell">{formatCurrency(row.receitas)}</td>
+                            <td className="py-2 px-1 text-right text-emerald-700 font-medium tabular-nums hidden lg:table-cell">{formatCurrency(sc.receitas)}</td>
+                            <td className="py-2 px-1 text-right hidden lg:table-cell"><Delta value={dRec} /></td>
+                            {/* Despesas */}
+                            <td className="py-2 px-1 text-right text-red-500 tabular-nums hidden lg:table-cell">{formatCurrency(row.despesas)}</td>
+                            <td className="py-2 px-1 text-right text-red-700 font-medium tabular-nums hidden lg:table-cell">{formatCurrency(sc.despesas)}</td>
+                            <td className="py-2 px-1 text-right hidden lg:table-cell"><Delta value={dDesp} inverse /></td>
+                            {/* Saldo mensal */}
+                            <td className="py-2 px-1 text-right tabular-nums hidden sm:table-cell">
+                              <span className={row.saldo >= 0 ? "text-emerald-600" : "text-red-500"}>
+                                {formatCurrency(row.saldo)}
+                              </span>
+                            </td>
+                            <td className="py-2 px-1 text-right font-medium tabular-nums hidden sm:table-cell">
+                              <span className={sc.saldo >= 0 ? "text-primary-600 dark:text-primary-400" : "text-red-600"}>
+                                {formatCurrency(sc.saldo)}
+                              </span>
+                            </td>
+                            <td className="py-2 px-1 text-right hidden sm:table-cell"><Delta value={dSaldo} /></td>
+                            {/* Acumulado */}
+                            <td className="py-2 px-1 text-right tabular-nums font-medium">
+                              <span className={row.saldoAcumulado >= 0 ? "text-slate-600 dark:text-slate-300" : "text-red-500"}>
+                                {formatCurrency(row.saldoAcumulado)}
+                              </span>
+                            </td>
+                            <td className="py-2 px-1 text-right tabular-nums font-bold">
+                              <span className={sc.saldoAcumulado >= 0 ? "text-primary-600 dark:text-primary-400" : "text-red-600"}>
+                                {formatCurrency(sc.saldoAcumulado)}
+                              </span>
+                            </td>
+                            <td className="py-2 px-1 text-right"><Delta value={dAcum} /></td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t-2 border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/50 font-bold">
+                        <td className="py-2.5 text-slate-700 dark:text-slate-200">TOTAL</td>
+                        {/* Receitas total */}
+                        <td className="py-2.5 px-1 text-right text-emerald-600 tabular-nums hidden lg:table-cell">{formatCurrency(totBase.receitas)}</td>
+                        <td className="py-2.5 px-1 text-right text-emerald-700 tabular-nums hidden lg:table-cell">{formatCurrency(totScen.receitas)}</td>
+                        <td className="py-2.5 px-1 text-right hidden lg:table-cell"><Delta value={delta.receitas} /></td>
+                        {/* Despesas total */}
+                        <td className="py-2.5 px-1 text-right text-red-500 tabular-nums hidden lg:table-cell">{formatCurrency(totBase.despesas)}</td>
+                        <td className="py-2.5 px-1 text-right text-red-700 tabular-nums hidden lg:table-cell">{formatCurrency(totScen.despesas)}</td>
+                        <td className="py-2.5 px-1 text-right hidden lg:table-cell"><Delta value={delta.despesas} inverse /></td>
+                        {/* Saldo mensal total (soma dos saldos) */}
+                        <td className="py-2.5 px-1 text-right tabular-nums hidden sm:table-cell">
+                          <span className={totBase.receitas - totBase.despesas >= 0 ? "text-emerald-600" : "text-red-500"}>
+                            {formatCurrency(totBase.receitas - totBase.despesas)}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-1 text-right tabular-nums hidden sm:table-cell">
+                          <span className={totScen.receitas - totScen.despesas >= 0 ? "text-primary-600 dark:text-primary-400" : "text-red-600"}>
+                            {formatCurrency(totScen.receitas - totScen.despesas)}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-1 text-right hidden sm:table-cell"><Delta value={(totScen.receitas - totScen.despesas) - (totBase.receitas - totBase.despesas)} /></td>
+                        {/* Acumulado final */}
+                        <td className="py-2.5 px-1 text-right tabular-nums">
+                          <span className={totBase.saldoFinal >= 0 ? "text-slate-700 dark:text-slate-200" : "text-red-500"}>{formatCurrency(totBase.saldoFinal)}</span>
+                        </td>
+                        <td className="py-2.5 px-1 text-right tabular-nums">
+                          <span className={totScen.saldoFinal >= 0 ? "text-primary-600 dark:text-primary-400" : "text-red-600"}>{formatCurrency(totScen.saldoFinal)}</span>
+                        </td>
+                        <td className="py-2.5 text-right"><Delta value={delta.saldoFinal} /></td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
               </div>
 
               {/* Gráfico Saldo Acumulado */}
@@ -737,89 +862,6 @@ export default function SimuladorPage() {
                     />
                   </AreaChart>
                 </ResponsiveContainer>
-              </div>
-
-              {/* Tabela mês a mês */}
-              <div className="card overflow-hidden">
-                <h3 className="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wide mb-3">
-                  Comparativo Mês a Mês — {year}
-                </h3>
-                <div className="overflow-x-auto -mx-4 px-4">
-                  <table className="w-full text-xs min-w-[560px]">
-                    <thead>
-                      <tr className="border-b border-slate-100 dark:border-slate-700/50">
-                        <th className="text-left py-2 text-slate-400 uppercase tracking-wide font-semibold">Mês</th>
-                        <th className="text-right py-2 px-1 text-emerald-600 uppercase tracking-wide font-semibold hidden sm:table-cell">Rec. Atual</th>
-                        <th className="text-right py-2 px-1 text-emerald-700 uppercase tracking-wide font-semibold hidden sm:table-cell">Rec. Cen.</th>
-                        <th className="text-right py-2 px-1 text-slate-400 uppercase tracking-wide font-semibold hidden sm:table-cell">Δ</th>
-                        <th className="text-right py-2 px-1 text-red-500 uppercase tracking-wide font-semibold hidden md:table-cell">Desp. Atual</th>
-                        <th className="text-right py-2 px-1 text-red-700 uppercase tracking-wide font-semibold hidden md:table-cell">Desp. Cen.</th>
-                        <th className="text-right py-2 px-1 text-slate-400 uppercase tracking-wide font-semibold hidden md:table-cell">Δ</th>
-                        <th className="text-right py-2 px-1 text-slate-600 dark:text-slate-300 uppercase tracking-wide font-semibold">Saldo Atual</th>
-                        <th className="text-right py-2 px-1 text-primary-600 uppercase tracking-wide font-semibold">Saldo Cen.</th>
-                        <th className="text-right py-2 text-slate-400 uppercase tracking-wide font-semibold">Δ</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {baseData.map((row, i) => {
-                        const sc    = scenarioData[i];
-                        const dRec  = sc.receitas - row.receitas;
-                        const dDesp = sc.despesas - row.despesas;
-                        const dSaldo = sc.saldo - row.saldo;
-                        const changed = dRec !== 0 || dDesp !== 0;
-                        return (
-                          <tr key={row.month}
-                            className={`border-b border-slate-50 dark:border-slate-700/30 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors ${
-                              changed ? "bg-primary-50/30 dark:bg-primary-900/5" : ""
-                            }`}
-                          >
-                            <td className="py-2 pr-2 font-semibold text-slate-700 dark:text-slate-200">
-                              {getMonthName(row.month)}
-                              {changed && <span className="ml-1 w-1.5 h-1.5 rounded-full bg-primary-400 inline-block align-middle" />}
-                            </td>
-                            <td className="py-2 px-1 text-right text-emerald-600 tabular-nums hidden sm:table-cell">{formatCurrency(row.receitas)}</td>
-                            <td className="py-2 px-1 text-right text-emerald-700 font-medium tabular-nums hidden sm:table-cell">{formatCurrency(sc.receitas)}</td>
-                            <td className="py-2 px-1 text-right hidden sm:table-cell"><Delta value={dRec} /></td>
-                            <td className="py-2 px-1 text-right text-red-500 tabular-nums hidden md:table-cell">{formatCurrency(row.despesas)}</td>
-                            <td className="py-2 px-1 text-right text-red-700 font-medium tabular-nums hidden md:table-cell">{formatCurrency(sc.despesas)}</td>
-                            <td className="py-2 px-1 text-right hidden md:table-cell"><Delta value={dDesp} inverse /></td>
-                            <td className="py-2 px-1 text-right font-medium tabular-nums">
-                              <span className={`flex items-center justify-end gap-0.5 ${row.saldo >= 0 ? "text-emerald-600" : "text-red-500"}`}>
-                                {row.saldo >= 0 ? <ArrowUpRight size={10} /> : <ArrowDownRight size={10} />}
-                                {formatCurrency(row.saldo)}
-                              </span>
-                            </td>
-                            <td className="py-2 px-1 text-right font-bold tabular-nums">
-                              <span className={`flex items-center justify-end gap-0.5 ${sc.saldo >= 0 ? "text-primary-600 dark:text-primary-400" : "text-red-600"}`}>
-                                {sc.saldo >= 0 ? <ArrowUpRight size={10} /> : <ArrowDownRight size={10} />}
-                                {formatCurrency(sc.saldo)}
-                              </span>
-                            </td>
-                            <td className="py-2 text-right"><Delta value={dSaldo} /></td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                    <tfoot>
-                      <tr className="border-t-2 border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/50 font-bold">
-                        <td className="py-2.5 text-slate-700 dark:text-slate-200">TOTAL</td>
-                        <td className="py-2.5 px-1 text-right text-emerald-600 tabular-nums hidden sm:table-cell">{formatCurrency(totBase.receitas)}</td>
-                        <td className="py-2.5 px-1 text-right text-emerald-700 tabular-nums hidden sm:table-cell">{formatCurrency(totScen.receitas)}</td>
-                        <td className="py-2.5 px-1 text-right hidden sm:table-cell"><Delta value={delta.receitas} /></td>
-                        <td className="py-2.5 px-1 text-right text-red-500 tabular-nums hidden md:table-cell">{formatCurrency(totBase.despesas)}</td>
-                        <td className="py-2.5 px-1 text-right text-red-700 tabular-nums hidden md:table-cell">{formatCurrency(totScen.despesas)}</td>
-                        <td className="py-2.5 px-1 text-right hidden md:table-cell"><Delta value={delta.despesas} inverse /></td>
-                        <td className="py-2.5 px-1 text-right tabular-nums">
-                          <span className={totBase.saldoFinal >= 0 ? "text-emerald-600" : "text-red-500"}>{formatCurrency(totBase.saldoFinal)}</span>
-                        </td>
-                        <td className="py-2.5 px-1 text-right tabular-nums">
-                          <span className={totScen.saldoFinal >= 0 ? "text-primary-600 dark:text-primary-400" : "text-red-600"}>{formatCurrency(totScen.saldoFinal)}</span>
-                        </td>
-                        <td className="py-2.5 text-right"><Delta value={delta.saldoFinal} /></td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
               </div>
             </>
           )}

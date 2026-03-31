@@ -41,9 +41,11 @@ interface ScenarioMod {
   startMonth: number;
   endMonth: number;
   // Campos de empréstimo
-  loanRate?: number;         // taxa mensal (ex: 0.02 = 2%)
-  loanInstallments?: number; // número de parcelas
+  loanRate?: number;
+  loanInstallments?: number;
   loanMethod?: "price" | "sac";
+  // Quitação customizada (pay_off_installment)
+  payoffAmount?: number;     // valor customizado; se null usa cálculo automático
 }
 
 interface MonthData {
@@ -95,6 +97,18 @@ function newMod(): ScenarioMod {
   };
 }
 
+/** Verifica se uma conta tem alguma parcela ativa no ano informado */
+function isBillActiveInYear(bill: FixedBill, year: number): boolean {
+  if (!bill.installment_total || bill.installment_start_month == null || bill.installment_start_year == null) {
+    return true; // conta fixa sem parcelas = sempre ativa
+  }
+  // Verifica se ao menos um mês do ano tem parcela ativa
+  for (let m = 1; m <= 12; m++) {
+    if (computeInstallment(bill, m, year) !== null) return true;
+  }
+  return false;
+}
+
 function remainingInstallments(bill: FixedBill, fromMonth: number, year: number): number {
   if (!bill.installment_total || bill.installment_start_month == null || bill.installment_start_year == null) return 0;
   const startAbs   = bill.installment_start_year * 12 + bill.installment_start_month - 1;
@@ -134,10 +148,13 @@ function applyMods(
           const bill = bills.find(b => b.id === mod.billId);
           if (!bill) break;
           if (row.month === mod.startMonth) {
-            // No mês da quitação: paga o saldo restante (parcelas restantes × valor)
+            // Usa valor customizado ou calcula automaticamente
             const remaining = remainingInstallments(bill, mod.startMonth, year);
-            billsTotal += remaining * bill.amount;
-            // E também remove a parcela normal daquele mês (para não dobrar)
+            const cost = mod.payoffAmount != null && mod.payoffAmount > 0
+              ? mod.payoffAmount
+              : remaining * bill.amount;
+            billsTotal += cost;
+            // Remove a parcela normal daquele mês (para não dobrar)
             billsTotal = Math.max(0, billsTotal - bill.amount);
           } else if (row.month > mod.startMonth) {
             // Meses seguintes: remove a parcela (já foi quitado)
@@ -513,7 +530,7 @@ export default function SimuladorPage() {
                           </>
                         )}
 
-                        {/* Conta (remove_bill) */}
+                        {/* Conta (remove_bill) — só mostra contas ativas no ano */}
                         {mod.type === "remove_bill" && (
                           <div className="sm:col-span-1">
                             <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Conta a remover</label>
@@ -524,7 +541,7 @@ export default function SimuladorPage() {
                                          rounded-lg px-2.5 py-1.5 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-primary-500"
                             >
                               <option value="">Selecione…</option>
-                              {bills.map(b => (
+                              {bills.filter(b => isBillActiveInYear(b, year)).map(b => (
                                 <option key={b.id} value={b.id}>
                                   {b.name} ({formatCurrency(b.amount)}/mês)
                                 </option>
@@ -533,30 +550,66 @@ export default function SimuladorPage() {
                           </div>
                         )}
 
-                        {/* Quitar parcelamento de uma vez */}
-                        {mod.type === "pay_off_installment" && (
-                          <div className="sm:col-span-2">
-                            <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Parcelamento / financiamento a quitar</label>
-                            <select
-                              value={mod.billId}
-                              onChange={e => updateMod(mod.id, { billId: e.target.value })}
-                              className="w-full text-xs bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600
-                                         rounded-lg px-2.5 py-1.5 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-primary-500"
-                            >
-                              <option value="">Selecione…</option>
-                              {bills.filter(b => b.installment_total).map(b => (
-                                <option key={b.id} value={b.id}>
-                                  {b.name} ({formatCurrency(b.amount)}/mês · {b.installment_total}x)
-                                </option>
-                              ))}
-                              {bills.filter(b => !b.installment_total).map(b => (
-                                <option key={b.id} value={b.id}>
-                                  {b.name} ({formatCurrency(b.amount)}/mês)
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        )}
+                        {/* Quitar parcelamento de uma vez — só mostra contas ativas no ano */}
+                        {mod.type === "pay_off_installment" && (() => {
+                          const activeBills = bills.filter(b => isBillActiveInYear(b, year));
+                          const selectedBill = bills.find(b => b.id === mod.billId);
+                          const autoAmount = selectedBill
+                            ? remainingInstallments(selectedBill, mod.startMonth, year) * selectedBill.amount
+                            : 0;
+                          return (
+                            <>
+                              <div className="sm:col-span-2">
+                                <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Parcelamento / financiamento a quitar</label>
+                                <select
+                                  value={mod.billId}
+                                  onChange={e => updateMod(mod.id, { billId: e.target.value, payoffAmount: undefined })}
+                                  className="w-full text-xs bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600
+                                             rounded-lg px-2.5 py-1.5 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                                >
+                                  <option value="">Selecione…</option>
+                                  {activeBills.filter(b => b.installment_total).map(b => (
+                                    <option key={b.id} value={b.id}>
+                                      {b.name} ({formatCurrency(b.amount)}/mês · {b.installment_total}x)
+                                    </option>
+                                  ))}
+                                  {activeBills.filter(b => !b.installment_total).map(b => (
+                                    <option key={b.id} value={b.id}>
+                                      {b.name} ({formatCurrency(b.amount)}/mês)
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                              {mod.billId && (
+                                <div>
+                                  <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">
+                                    Valor da quitação (R$)
+                                    {autoAmount > 0 && (
+                                      <button
+                                        type="button"
+                                        onClick={() => updateMod(mod.id, { payoffAmount: undefined })}
+                                        className="ml-2 text-primary-500 hover:underline text-[10px]"
+                                      >
+                                        {mod.payoffAmount != null ? "usar auto" : `auto: ${formatCurrency(autoAmount)}`}
+                                      </button>
+                                    )}
+                                  </label>
+                                  <input
+                                    type="number"
+                                    step="100"
+                                    value={mod.payoffAmount ?? ""}
+                                    placeholder={autoAmount > 0 ? formatCurrency(autoAmount).replace("R$\u00a0", "") : "valor da quitação"}
+                                    onChange={e => updateMod(mod.id, {
+                                      payoffAmount: e.target.value === "" ? undefined : parseFloat(e.target.value) || 0,
+                                    })}
+                                    className="w-full text-xs bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600
+                                               rounded-lg px-2.5 py-1.5 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                                  />
+                                </div>
+                              )}
+                            </>
+                          );
+                        })()}
 
                         {/* Valor (tudo exceto remove_bill e loan) */}
                         {mod.type !== "remove_bill" && mod.type !== "loan" && (
@@ -635,19 +688,25 @@ export default function SimuladorPage() {
                         const bill = bills.find(b => b.id === mod.billId);
                         if (!bill) return null;
                         const remaining = remainingInstallments(bill, mod.startMonth, year);
-                        const totalCost = remaining * bill.amount;
-                        const monthsSaved = Math.max(0, 12 - mod.startMonth); // parcelas restantes no ano
+                        const autoTotal = remaining * bill.amount;
+                        const totalCost = mod.payoffAmount != null && mod.payoffAmount > 0 ? mod.payoffAmount : autoTotal;
+                        const monthsSaved = Math.max(0, 12 - mod.startMonth);
                         const savedInYear = monthsSaved * bill.amount;
+                        const isCustom = mod.payoffAmount != null && mod.payoffAmount > 0;
                         return (
                           <div className="pl-7 space-y-1 text-xs">
-                            <div className="flex flex-wrap gap-4">
+                            <div className="flex flex-wrap gap-4 items-center">
                               <span className="text-red-500 font-semibold">
-                                -{formatCurrency(totalCost)} em {getMonthName(mod.startMonth)} (quitacao)
+                                -{formatCurrency(totalCost)} em {getMonthName(mod.startMonth)}
+                                {isCustom && <span className="ml-1 text-amber-500">(valor customizado)</span>}
                               </span>
-                              {remaining > 0 && (
+                              {!isCustom && remaining > 0 && (
                                 <span className="text-slate-400">
-                                  {remaining} parcelas restantes × {formatCurrency(bill.amount)}
+                                  {remaining} parcelas × {formatCurrency(bill.amount)}
                                 </span>
+                              )}
+                              {isCustom && autoTotal > 0 && (
+                                <span className="text-slate-400">auto seria {formatCurrency(autoTotal)}</span>
                               )}
                             </div>
                             {savedInYear > 0 && (

@@ -611,8 +611,8 @@ export default function SimuladorPage() {
                           );
                         })()}
 
-                        {/* Valor (tudo exceto remove_bill e loan) */}
-                        {mod.type !== "remove_bill" && mod.type !== "loan" && (
+                        {/* Valor (tudo exceto remove_bill, loan e pay_off_installment) */}
+                        {mod.type !== "remove_bill" && mod.type !== "loan" && mod.type !== "pay_off_installment" && (
                           <div>
                             <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">
                               {mod.type === "income_change" ? "Valor R$ (+/-)" : "Valor R$"}

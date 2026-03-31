@@ -367,6 +367,7 @@ export default function SimuladorPage() {
 
   const hasMods = mods.some(m => {
     if (m.type === "remove_bill") return !!m.billId;
+    if (m.type === "pay_off_installment") return !!m.billId;
     if (m.type === "loan") return m.amount > 0 && (m.loanInstallments ?? 0) > 0;
     return m.amount !== 0;
   });

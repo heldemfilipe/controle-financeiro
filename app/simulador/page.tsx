@@ -25,12 +25,13 @@ import {
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 type ModType =
-  | "remove_bill"       // Quitar conta fixa
-  | "add_expense"       // Nova despesa mensal
-  | "income_change"     // Alterar renda (+/-)
-  | "one_time_income"   // Receita avulsa
-  | "one_time_expense"  // Despesa avulsa
-  | "loan";             // Empréstimo / Financiamento
+  | "remove_bill"          // Remover conta fixa (para sempre)
+  | "pay_off_installment"  // Quitar parcelamento/financiamento de uma vez
+  | "add_expense"          // Nova despesa mensal
+  | "income_change"        // Alterar renda (+/-)
+  | "one_time_income"      // Receita avulsa
+  | "one_time_expense"     // Despesa avulsa
+  | "loan";                // Novo empréstimo / Financiamento
 
 interface ScenarioMod {
   id: string;
@@ -59,21 +60,23 @@ interface MonthData {
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const MOD_LABELS: Record<ModType, string> = {
-  remove_bill:      "Quitar / remover conta fixa",
-  add_expense:      "Nova despesa mensal",
-  income_change:    "Alterar renda mensal (+/-)",
-  one_time_income:  "Receita avulsa (unico mes)",
-  one_time_expense: "Despesa avulsa (unico mes)",
-  loan:             "Emprestimo / Financiamento",
+  remove_bill:          "Remover conta fixa (mensal)",
+  pay_off_installment:  "Quitar parcelamento / financiamento de uma vez",
+  add_expense:          "Nova despesa mensal",
+  income_change:        "Alterar renda mensal (+/-)",
+  one_time_income:      "Receita avulsa (unico mes)",
+  one_time_expense:     "Despesa avulsa (unico mes)",
+  loan:                 "Novo emprestimo / Financiamento",
 };
 
 const MOD_EXAMPLES: Record<ModType, string> = {
-  remove_bill:      "Ex: quitar emprestimo, vender carro",
-  add_expense:      "Ex: novo financiamento, academia",
-  income_change:    "Ex: +1.000 aumento, -500 reducao",
-  one_time_income:  "Ex: venda de veiculo, FGTS, bonus",
-  one_time_expense: "Ex: IPTU a vista, cirurgia, viagem",
-  loan:             "Ex: emprestimo pessoal, financiamento de carro",
+  remove_bill:          "Ex: cancelar academia, encerrar plano",
+  pay_off_installment:  "Ex: quitar carro, pagar emprestimo, antecipar parcelas",
+  add_expense:          "Ex: novo plano de saude, academia",
+  income_change:        "Ex: +1.000 aumento, -500 reducao",
+  one_time_income:      "Ex: venda de veiculo, FGTS, bonus",
+  one_time_expense:     "Ex: IPTU a vista, cirurgia, viagem",
+  loan:                 "Ex: emprestimo pessoal, financiamento de carro",
 };
 
 const MONTH_OPTS = Array.from({ length: 12 }, (_, i) => i + 1);
@@ -92,20 +95,33 @@ function newMod(): ScenarioMod {
   };
 }
 
-function applyMods(base: MonthData[], mods: ScenarioMod[], bills: FixedBill[], year: number, startBalance: number = 0): MonthData[] {
+function remainingInstallments(bill: FixedBill, fromMonth: number, year: number): number {
+  if (!bill.installment_total || bill.installment_start_month == null || bill.installment_start_year == null) return 0;
+  const startAbs   = bill.installment_start_year * 12 + bill.installment_start_month - 1;
+  const fromAbs    = year * 12 + fromMonth - 1;
+  const elapsed    = fromAbs - startAbs; // parcelas já pagas antes do mês de quitação
+  return Math.max(0, bill.installment_total - elapsed);
+}
+
+interface AccCfg { startMonth: number; startYear: number; saldoInicial: number }
+
+function applyMods(
+  base: MonthData[],
+  mods: ScenarioMod[],
+  bills: FixedBill[],
+  year: number,
+  startBalance: number = 0,
+  cfg?: AccCfg,
+): MonthData[] {
   const modified = base.map(row => {
     let receitas   = row.receitas;
     let billsTotal = row.billsTotal;
 
     for (const mod of mods) {
-      const isOneTime = mod.type === "one_time_income" || mod.type === "one_time_expense";
-      const active = isOneTime
-        ? row.month === mod.startMonth
-        : row.month >= mod.startMonth && row.month <= mod.endMonth;
-      if (!active) continue;
 
       switch (mod.type) {
         case "remove_bill": {
+          if (row.month < mod.startMonth || row.month > mod.endMonth) break;
           const bill = bills.find(b => b.id === mod.billId);
           if (!bill) break;
           if (bill.installment_total && bill.installment_start_month != null && bill.installment_start_year != null) {
@@ -114,10 +130,31 @@ function applyMods(base: MonthData[], mods: ScenarioMod[], bills: FixedBill[], y
           billsTotal = Math.max(0, billsTotal - bill.amount);
           break;
         }
-        case "add_expense":      billsTotal += mod.amount; break;
-        case "income_change":    receitas   += mod.amount; break;
-        case "one_time_income":  receitas   += mod.amount; break;
-        case "one_time_expense": billsTotal += mod.amount; break;
+        case "pay_off_installment": {
+          const bill = bills.find(b => b.id === mod.billId);
+          if (!bill) break;
+          if (row.month === mod.startMonth) {
+            // No mês da quitação: paga o saldo restante (parcelas restantes × valor)
+            const remaining = remainingInstallments(bill, mod.startMonth, year);
+            billsTotal += remaining * bill.amount;
+            // E também remove a parcela normal daquele mês (para não dobrar)
+            billsTotal = Math.max(0, billsTotal - bill.amount);
+          } else if (row.month > mod.startMonth) {
+            // Meses seguintes: remove a parcela (já foi quitado)
+            if (bill.installment_total && bill.installment_start_month != null && bill.installment_start_year != null) {
+              if (computeInstallment(bill, row.month, year) !== null) {
+                billsTotal = Math.max(0, billsTotal - bill.amount);
+              }
+            } else {
+              billsTotal = Math.max(0, billsTotal - bill.amount);
+            }
+          }
+          break;
+        }
+        case "add_expense":      if (row.month >= mod.startMonth && row.month <= mod.endMonth) billsTotal += mod.amount; break;
+        case "income_change":    if (row.month >= mod.startMonth && row.month <= mod.endMonth) receitas   += mod.amount; break;
+        case "one_time_income":  if (row.month === mod.startMonth) receitas   += mod.amount; break;
+        case "one_time_expense": if (row.month === mod.startMonth) billsTotal += mod.amount; break;
         case "loan": {
           if (!mod.amount || !mod.loanInstallments || mod.loanRate == null) break;
           const rows = calculateAmortization({
@@ -128,11 +165,9 @@ function applyMods(base: MonthData[], mods: ScenarioMod[], bills: FixedBill[], y
             startMonth: mod.startMonth,
             startYear: year,
           });
-          // No mês de início: recebe o valor do empréstimo
           if (row.month === mod.startMonth) {
             receitas += mod.amount;
           }
-          // Parcelas: aplica a cada mês correspondente
           const loanRow = rows.find(r => r.month === row.month && r.year === year);
           if (loanRow) {
             billsTotal += loanRow.payment;
@@ -147,7 +182,13 @@ function applyMods(base: MonthData[], mods: ScenarioMod[], bills: FixedBill[], y
   });
 
   let acc = startBalance;
-  return modified.map(m => { acc += m.saldo; return { ...m, saldoAcumulado: acc }; });
+  return modified.map(m => {
+    if (cfg && year === cfg.startYear && m.month < cfg.startMonth) {
+      return { ...m, saldoAcumulado: 0 };
+    }
+    acc += m.saldo;
+    return { ...m, saldoAcumulado: acc };
+  });
 }
 
 function Delta({ value, inverse = false }: { value: number; inverse?: boolean }) {
@@ -171,6 +212,7 @@ export default function SimuladorPage() {
   const [scenarioName, setScenarioName] = useState("Meu Cenário");
   const [mods, setMods]     = useState<ScenarioMod[]>([]);
   const [yearStartBalance, setYearStartBalance] = useState(0);
+  const [accCfg, setAccCfg] = useState<AccCfg>(() => getAccConfig());
 
   // Persist scenario
   useEffect(() => {
@@ -191,6 +233,7 @@ export default function SimuladorPage() {
       const [allBills, sources] = await Promise.all([getFixedBills(), getIncomeSources()]);
       setBills(allBills);
       const cfg = getAccConfig();
+      setAccCfg(cfg);
 
       // Carry-over: saldoInicial + saldo acumulado de anos anteriores
       let startBal = cfg.saldoInicial;
@@ -270,12 +313,18 @@ export default function SimuladorPage() {
       );
 
       let acc = startBal;
-      setBaseData(rawMonths.map(m => { acc += m.saldo; return { ...m, saldoAcumulado: acc }; }));
+      setBaseData(rawMonths.map(m => {
+        if (year === cfg.startYear && m.month < cfg.startMonth) {
+          return { ...m, saldoAcumulado: 0 };
+        }
+        acc += m.saldo;
+        return { ...m, saldoAcumulado: acc };
+      }));
     } finally { setLoading(false); }
   }
 
   // Derived
-  const scenarioData = applyMods(baseData, mods, bills, year, yearStartBalance);
+  const scenarioData = applyMods(baseData, mods, bills, year, yearStartBalance, accCfg);
 
   const totBase = {
     receitas: baseData.reduce((s, d) => s + d.receitas, 0),
@@ -467,7 +516,7 @@ export default function SimuladorPage() {
                         {/* Conta (remove_bill) */}
                         {mod.type === "remove_bill" && (
                           <div className="sm:col-span-1">
-                            <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Conta a quitar</label>
+                            <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Conta a remover</label>
                             <select
                               value={mod.billId}
                               onChange={e => updateMod(mod.id, { billId: e.target.value })}
@@ -476,6 +525,31 @@ export default function SimuladorPage() {
                             >
                               <option value="">Selecione…</option>
                               {bills.map(b => (
+                                <option key={b.id} value={b.id}>
+                                  {b.name} ({formatCurrency(b.amount)}/mês)
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+
+                        {/* Quitar parcelamento de uma vez */}
+                        {mod.type === "pay_off_installment" && (
+                          <div className="sm:col-span-2">
+                            <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Parcelamento / financiamento a quitar</label>
+                            <select
+                              value={mod.billId}
+                              onChange={e => updateMod(mod.id, { billId: e.target.value })}
+                              className="w-full text-xs bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600
+                                         rounded-lg px-2.5 py-1.5 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                            >
+                              <option value="">Selecione…</option>
+                              {bills.filter(b => b.installment_total).map(b => (
+                                <option key={b.id} value={b.id}>
+                                  {b.name} ({formatCurrency(b.amount)}/mês · {b.installment_total}x)
+                                </option>
+                              ))}
+                              {bills.filter(b => !b.installment_total).map(b => (
                                 <option key={b.id} value={b.id}>
                                   {b.name} ({formatCurrency(b.amount)}/mês)
                                 </option>
@@ -504,7 +578,7 @@ export default function SimuladorPage() {
                         {/* De (mês início) */}
                         <div>
                           <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">
-                            {isOneTime ? "Mes" : mod.type === "loan" ? "Mes do emprestimo" : "A partir de"}
+                            {isOneTime ? "Mes" : mod.type === "loan" ? "Mes do emprestimo" : mod.type === "pay_off_installment" ? "Mes da quitacao" : "A partir de"}
                           </label>
                           <select
                             value={mod.startMonth}
@@ -522,8 +596,8 @@ export default function SimuladorPage() {
                           </select>
                         </div>
 
-                        {/* Até (mês fim) — oculto para one-time e loan */}
-                        {!isOneTime && mod.type !== "loan" && (
+                        {/* Até (mês fim) — oculto para one-time, loan e pay_off */}
+                        {!isOneTime && mod.type !== "loan" && mod.type !== "pay_off_installment" && (
                           <div>
                             <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">Até</label>
                             <select
@@ -553,6 +627,34 @@ export default function SimuladorPage() {
                             <span className="text-emerald-500">
                               +{formatCurrency(bill.amount * months)} em {months} mês{months > 1 ? "es" : ""}
                             </span>
+                          </div>
+                        );
+                      })()}
+                      {/* Preview: quitar parcelamento */}
+                      {mod.type === "pay_off_installment" && mod.billId && (() => {
+                        const bill = bills.find(b => b.id === mod.billId);
+                        if (!bill) return null;
+                        const remaining = remainingInstallments(bill, mod.startMonth, year);
+                        const totalCost = remaining * bill.amount;
+                        const monthsSaved = Math.max(0, 12 - mod.startMonth); // parcelas restantes no ano
+                        const savedInYear = monthsSaved * bill.amount;
+                        return (
+                          <div className="pl-7 space-y-1 text-xs">
+                            <div className="flex flex-wrap gap-4">
+                              <span className="text-red-500 font-semibold">
+                                -{formatCurrency(totalCost)} em {getMonthName(mod.startMonth)} (quitacao)
+                              </span>
+                              {remaining > 0 && (
+                                <span className="text-slate-400">
+                                  {remaining} parcelas restantes × {formatCurrency(bill.amount)}
+                                </span>
+                              )}
+                            </div>
+                            {savedInYear > 0 && (
+                              <div className="text-emerald-600">
+                                +{formatCurrency(savedInYear)} economizado no restante do ano ({monthsSaved} meses sem parcela)
+                              </div>
+                            )}
                           </div>
                         );
                       })()}
@@ -716,20 +818,20 @@ export default function SimuladorPage() {
                       </tr>
                       <tr className="border-b border-slate-100 dark:border-slate-700/50">
                         {/* Receitas sub-headers */}
-                        <th className="text-right py-1.5 px-1 text-slate-400 text-[10px] uppercase hidden lg:table-cell">Atual</th>
-                        <th className="text-right py-1.5 px-1 text-slate-400 text-[10px] uppercase hidden lg:table-cell">Cen.</th>
+                        <th className="text-right py-1.5 px-1 text-slate-400 text-[10px] uppercase hidden lg:table-cell">Hoje</th>
+                        <th className="text-right py-1.5 px-1 text-primary-500 text-[10px] hidden lg:table-cell truncate max-w-[80px]">{scenarioName}</th>
                         <th className="text-right py-1.5 px-1 text-slate-400 text-[10px] uppercase hidden lg:table-cell">Δ</th>
                         {/* Despesas sub-headers */}
-                        <th className="text-right py-1.5 px-1 text-slate-400 text-[10px] uppercase hidden lg:table-cell">Atual</th>
-                        <th className="text-right py-1.5 px-1 text-slate-400 text-[10px] uppercase hidden lg:table-cell">Cen.</th>
+                        <th className="text-right py-1.5 px-1 text-slate-400 text-[10px] uppercase hidden lg:table-cell">Hoje</th>
+                        <th className="text-right py-1.5 px-1 text-primary-500 text-[10px] hidden lg:table-cell truncate max-w-[80px]">{scenarioName}</th>
                         <th className="text-right py-1.5 px-1 text-slate-400 text-[10px] uppercase hidden lg:table-cell">Δ</th>
                         {/* Saldo mensal sub-headers */}
-                        <th className="text-right py-1.5 px-1 text-slate-400 text-[10px] uppercase hidden sm:table-cell">Atual</th>
-                        <th className="text-right py-1.5 px-1 text-slate-400 text-[10px] uppercase hidden sm:table-cell">Cen.</th>
+                        <th className="text-right py-1.5 px-1 text-slate-400 text-[10px] uppercase hidden sm:table-cell">Hoje</th>
+                        <th className="text-right py-1.5 px-1 text-primary-500 text-[10px] hidden sm:table-cell truncate max-w-[80px]">{scenarioName}</th>
                         <th className="text-right py-1.5 px-1 text-slate-400 text-[10px] uppercase hidden sm:table-cell">Δ</th>
                         {/* Acumulado sub-headers */}
-                        <th className="text-right py-1.5 px-1 text-slate-400 text-[10px] uppercase">Atual</th>
-                        <th className="text-right py-1.5 px-1 text-slate-400 text-[10px] uppercase">Cen.</th>
+                        <th className="text-right py-1.5 px-1 text-slate-400 text-[10px] uppercase">Hoje</th>
+                        <th className="text-right py-1.5 px-1 text-primary-500 text-[10px] truncate max-w-[80px]">{scenarioName}</th>
                         <th className="text-right py-1.5 px-1 text-slate-400 text-[10px] uppercase">Δ</th>
                       </tr>
                     </thead>

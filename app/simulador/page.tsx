@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceLine, Legend,
@@ -13,13 +13,12 @@ import {
 } from "@/lib/queries";
 import { formatCurrency, getMonthName, computeInstallment, getAccConfig } from "@/lib/utils";
 import { calculateAmortization, loanSummary } from "@/lib/loan";
-import type { LoanParams, AmortizationRow } from "@/lib/loan";
 import { MONTH_SHORT } from "@/types";
 import type { FixedBill } from "@/types";
 import {
   Plus, Trash2, ChevronLeft, ChevronRight,
   TrendingUp, TrendingDown, Wallet, FlaskConical,
-  ArrowUpRight, ArrowDownRight, Calculator, ChevronDown as ChevDown,
+  AlertCircle, Calculator, RotateCcw,
 } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -119,6 +118,14 @@ function remainingInstallments(bill: FixedBill, fromMonth: number, year: number)
 
 interface AccCfg { startMonth: number; startYear: number; saldoInicial: number }
 
+/** Verifica se um mod está suficientemente preenchido para ser aplicado */
+function isModValid(mod: ScenarioMod): boolean {
+  if (mod.type === "remove_bill") return !!mod.billId;
+  if (mod.type === "pay_off_installment") return !!mod.billId;
+  if (mod.type === "loan") return mod.amount > 0 && (mod.loanInstallments ?? 0) > 0 && (mod.loanRate ?? 0) >= 0;
+  return mod.amount !== 0;
+}
+
 function applyMods(
   base: MonthData[],
   mods: ScenarioMod[],
@@ -127,11 +134,32 @@ function applyMods(
   startBalance: number = 0,
   cfg?: AccCfg,
 ): MonthData[] {
+  // Pré-computa amortizações de empréstimos (evita recalcular 12x por loan)
+  const loanPayments = new Map<string, Map<number, number>>(); // modId → month → payment
+  for (const mod of mods) {
+    if (mod.type === "loan" && mod.amount > 0 && (mod.loanInstallments ?? 0) > 0 && mod.loanRate != null) {
+      const rows = calculateAmortization({
+        amount: mod.amount,
+        monthlyRate: mod.loanRate / 100,
+        installments: mod.loanInstallments!,
+        method: mod.loanMethod ?? "price",
+        startMonth: mod.startMonth,
+        startYear: year,
+      });
+      const byMonth = new Map<number, number>();
+      for (const r of rows) {
+        if (r.year === year) byMonth.set(r.month, r.payment);
+      }
+      loanPayments.set(mod.id, byMonth);
+    }
+  }
+
   const modified = base.map(row => {
     let receitas   = row.receitas;
     let billsTotal = row.billsTotal;
 
     for (const mod of mods) {
+      if (!isModValid(mod)) continue; // ignora mods incompletos
 
       switch (mod.type) {
         case "remove_bill": {
@@ -148,17 +176,19 @@ function applyMods(
           const bill = bills.find(b => b.id === mod.billId);
           if (!bill) break;
           if (row.month === mod.startMonth) {
-            // Usa valor customizado ou calcula automaticamente
             const remaining = remainingInstallments(bill, mod.startMonth, year);
             const cost = mod.payoffAmount != null && mod.payoffAmount > 0
               ? mod.payoffAmount
               : remaining * bill.amount;
             billsTotal += cost;
-            // Remove a parcela normal daquele mês (para não dobrar)
+            // Remove a parcela normal do mês de quitação (para não dobrar)
             billsTotal = Math.max(0, billsTotal - bill.amount);
           } else if (row.month > mod.startMonth) {
-            // Meses seguintes: remove a parcela (já foi quitado)
-            if (bill.installment_total && bill.installment_start_month != null && bill.installment_start_year != null) {
+            // Meses após a quitação: remove a parcela (já foi pago)
+            const isInstallment = bill.installment_total != null &&
+              bill.installment_start_month != null &&
+              bill.installment_start_year != null;
+            if (isInstallment) {
               if (computeInstallment(bill, row.month, year) !== null) {
                 billsTotal = Math.max(0, billsTotal - bill.amount);
               }
@@ -173,22 +203,9 @@ function applyMods(
         case "one_time_income":  if (row.month === mod.startMonth) receitas   += mod.amount; break;
         case "one_time_expense": if (row.month === mod.startMonth) billsTotal += mod.amount; break;
         case "loan": {
-          if (!mod.amount || !mod.loanInstallments || mod.loanRate == null) break;
-          const rows = calculateAmortization({
-            amount: mod.amount,
-            monthlyRate: mod.loanRate / 100,
-            installments: mod.loanInstallments,
-            method: mod.loanMethod ?? "price",
-            startMonth: mod.startMonth,
-            startYear: year,
-          });
-          if (row.month === mod.startMonth) {
-            receitas += mod.amount;
-          }
-          const loanRow = rows.find(r => r.month === row.month && r.year === year);
-          if (loanRow) {
-            billsTotal += loanRow.payment;
-          }
+          if (row.month === mod.startMonth) receitas += mod.amount;
+          const payment = loanPayments.get(mod.id)?.get(row.month);
+          if (payment) billsTotal += payment;
           break;
         }
       }
@@ -340,30 +357,35 @@ export default function SimuladorPage() {
     } finally { setLoading(false); }
   }
 
-  // Derived
-  const scenarioData = applyMods(baseData, mods, bills, year, yearStartBalance, accCfg);
+  // Derived — memoizados para evitar recalcular em cada render
+  const scenarioData = useMemo(
+    () => applyMods(baseData, mods, bills, year, yearStartBalance, accCfg),
+    [baseData, mods, bills, year, yearStartBalance, accCfg],
+  );
 
-  const totBase = {
-    receitas: baseData.reduce((s, d) => s + d.receitas, 0),
-    despesas: baseData.reduce((s, d) => s + d.despesas, 0),
+  const totBase = useMemo(() => ({
+    receitas:   baseData.reduce((s, d) => s + d.receitas, 0),
+    despesas:   baseData.reduce((s, d) => s + d.despesas, 0),
     saldoFinal: baseData[11]?.saldoAcumulado ?? 0,
-  };
-  const totScen = {
-    receitas: scenarioData.reduce((s, d) => s + d.receitas, 0),
-    despesas: scenarioData.reduce((s, d) => s + d.despesas, 0),
+  }), [baseData]);
+
+  const totScen = useMemo(() => ({
+    receitas:   scenarioData.reduce((s, d) => s + d.receitas, 0),
+    despesas:   scenarioData.reduce((s, d) => s + d.despesas, 0),
     saldoFinal: scenarioData[11]?.saldoAcumulado ?? 0,
-  };
-  const delta = {
+  }), [scenarioData]);
+
+  const delta = useMemo(() => ({
     receitas:   totScen.receitas   - totBase.receitas,
     despesas:   totScen.despesas   - totBase.despesas,
     saldoFinal: totScen.saldoFinal - totBase.saldoFinal,
-  };
+  }), [totBase, totScen]);
 
-  const chartData = baseData.map((row, i) => ({
+  const chartData = useMemo(() => baseData.map((row, i) => ({
     name: row.name,
     Atual: Math.round(row.saldoAcumulado),
     [scenarioName]: Math.round(scenarioData[i]?.saldoAcumulado ?? 0),
-  }));
+  })), [baseData, scenarioData, scenarioName]);
 
   const hasMods = mods.some(m => {
     if (m.type === "remove_bill") return !!m.billId;
@@ -410,7 +432,17 @@ export default function SimuladorPage() {
                 value={scenarioName}
                 onChange={e => setScenarioName(e.target.value)}
                 placeholder="Nome do cenário"
+                maxLength={40}
               />
+              {mods.length > 0 && (
+                <button
+                  onClick={() => { if (confirm("Limpar todas as modificações?")) setMods([]); }}
+                  title="Limpar tudo"
+                  className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors shrink-0"
+                >
+                  <RotateCcw size={14} />
+                </button>
+              )}
               <button
                 onClick={addMod}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold
@@ -445,10 +477,15 @@ export default function SimuladorPage() {
               <div className="space-y-3">
                 {mods.map((mod, idx) => {
                   const isOneTime = mod.type === "one_time_income" || mod.type === "one_time_expense";
+                  const valid = isModValid(mod);
                   return (
-                    <div key={mod.id} className="border border-slate-200 dark:border-slate-700/60 rounded-xl p-3 bg-slate-50/50 dark:bg-slate-800/20 space-y-2.5">
+                    <div key={mod.id} className={`border rounded-xl p-3 space-y-2.5 ${
+                      valid
+                        ? "border-slate-200 dark:border-slate-700/60 bg-slate-50/50 dark:bg-slate-800/20"
+                        : "border-amber-200 dark:border-amber-700/40 bg-amber-50/30 dark:bg-amber-900/10"
+                    }`}>
 
-                      {/* Header: número + tipo + delete */}
+                      {/* Header: número + tipo + badge + delete */}
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-bold text-primary-500 w-5 shrink-0">#{idx + 1}</span>
                         <select
@@ -466,9 +503,14 @@ export default function SimuladorPage() {
                             <option key={v} value={v}>{l}</option>
                           ))}
                         </select>
+                        {!valid && (
+                          <span className="flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400 font-medium shrink-0">
+                            <AlertCircle size={11} /> Incompleto
+                          </span>
+                        )}
                         <button
                           onClick={() => removeMod(mod.id)}
-                          className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors shrink-0"
+                          className="ml-auto p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors shrink-0"
                         >
                           <Trash2 size={14} />
                         </button>
@@ -672,14 +714,22 @@ export default function SimuladorPage() {
                       {mod.type === "remove_bill" && mod.billId && (() => {
                         const bill = bills.find(b => b.id === mod.billId);
                         if (!bill) return null;
-                        const months = mod.endMonth - mod.startMonth + 1;
+                        // Conta apenas meses em que a parcela está ativa no ano
+                        const activeMonths = MONTH_OPTS.filter(m => {
+                          if (m < mod.startMonth || m > mod.endMonth) return false;
+                          if (!bill.installment_total || bill.installment_start_month == null || bill.installment_start_year == null) return true;
+                          return computeInstallment(bill, m, year) !== null;
+                        });
+                        if (activeMonths.length === 0) return (
+                          <p className="pl-7 text-xs text-amber-500">Parcela encerra antes do período selecionado</p>
+                        );
                         return (
                           <div className="pl-7 flex gap-4 text-xs">
                             <span className="text-emerald-600 font-semibold">
                               +{formatCurrency(bill.amount)}/mês economizado
                             </span>
                             <span className="text-emerald-500">
-                              +{formatCurrency(bill.amount * months)} em {months} mês{months > 1 ? "es" : ""}
+                              +{formatCurrency(bill.amount * activeMonths.length)} em {activeMonths.length} mês{activeMonths.length > 1 ? "es" : ""}
                             </span>
                           </div>
                         );

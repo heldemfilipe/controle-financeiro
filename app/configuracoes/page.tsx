@@ -55,6 +55,7 @@ export default function ConfiguracoesPage() {
   const [newPassword, setNewPassword] = useState("");
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [userFeedback, setUserFeedback] = useState("");
+  const [saveError, setSaveError] = useState("");
 
   useEffect(() => {
     loadAll();
@@ -93,10 +94,17 @@ export default function ConfiguracoesPage() {
 
   async function saveSource() {
     if (!editSource.name || !editSource.base_amount) return;
-    setLoading(true);
-    await upsertIncomeSource({ owner: "casal", type: "salary", active: true, ...editSource });
-    setSourceModal(false); setEditSource({});
-    await loadAll(); setLoading(false); showSaved();
+    setSaveError(""); setLoading(true);
+    try {
+      await upsertIncomeSource({ owner: "casal", type: "salary", active: true, ...editSource });
+      setSourceModal(false); setEditSource({});
+      await loadAll(); showSaved();
+    } catch (err: any) {
+      console.error("Erro ao salvar fonte de renda:", err);
+      setSaveError(err?.message ?? "Erro ao salvar. Tente novamente.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleDeleteSource(id: string) {
@@ -107,10 +115,17 @@ export default function ConfiguracoesPage() {
 
   async function saveCard() {
     if (!editCard.name || !editCard.due_day || !editCard.bank) return;
-    setLoading(true);
-    await upsertCreditCard({ color: "#6366f1", active: true, owner: "pessoa1", ...editCard });
-    setCardModal(false); setEditCard({});
-    await loadAll(); setLoading(false); showSaved();
+    setSaveError(""); setLoading(true);
+    try {
+      await upsertCreditCard({ color: "#6366f1", active: true, owner: "pessoa1", ...editCard });
+      setCardModal(false); setEditCard({});
+      await loadAll(); showSaved();
+    } catch (err: any) {
+      console.error("Erro ao salvar cartão:", err);
+      setSaveError(err?.message ?? "Erro ao salvar. Tente novamente.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function toggleCardActive(card: CreditCardType) {
@@ -120,10 +135,17 @@ export default function ConfiguracoesPage() {
 
   async function saveBill() {
     if (!editBill.name || !editBill.amount) return;
-    setLoading(true);
-    await upsertFixedBill({ category: "essencial", active: true, ...editBill });
-    setBillModal(false); setEditBill({});
-    await loadAll(); setLoading(false); showSaved();
+    setSaveError(""); setLoading(true);
+    try {
+      await upsertFixedBill({ category: "essencial", active: true, ...editBill });
+      setBillModal(false); setEditBill({});
+      await loadAll(); showSaved();
+    } catch (err: any) {
+      console.error("Erro ao salvar conta:", err);
+      setSaveError(err?.message ?? "Erro ao salvar. Tente novamente.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleDeleteBill(id: string) {
@@ -709,17 +731,24 @@ export default function ConfiguracoesPage() {
               </select>
             </div>
           </div>
+          {saveError && (
+            <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800/30 text-xs text-red-600 dark:text-red-400">
+              <AlertCircle size={13} className="shrink-0 mt-0.5" />
+              <span>{saveError}</span>
+            </div>
+          )}
           <div className="flex gap-2 pt-2">
-            <button onClick={() => { setSourceModal(false); setEditSource({}); }} className="btn-secondary flex-1">Cancelar</button>
+            <button onClick={() => { setSourceModal(false); setEditSource({}); setSaveError(""); }} className="btn-secondary flex-1">Cancelar</button>
             <button onClick={saveSource} disabled={loading} className="btn-primary flex-1 flex items-center justify-center gap-2">
-              <Save size={14} /> Salvar
+              {loading ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> : <Save size={14} />}
+              Salvar
             </button>
           </div>
         </div>
       </Modal>
 
       {/* ── MODAL: Cartão ── */}
-      <Modal open={cardModal} onClose={() => { setCardModal(false); setEditCard({}); }}
+      <Modal open={cardModal} onClose={() => { setCardModal(false); setEditCard({}); setSaveError(""); }}
         title={editCard.id ? "Editar Cartão" : "Novo Cartão de Crédito"}>
         <div className="space-y-3">
           <div
@@ -786,17 +815,24 @@ export default function ConfiguracoesPage() {
               </div>
             </div>
           </div>
+          {saveError && (
+            <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800/30 text-xs text-red-600 dark:text-red-400">
+              <AlertCircle size={13} className="shrink-0 mt-0.5" />
+              <span>{saveError}</span>
+            </div>
+          )}
           <div className="flex gap-2 pt-2">
-            <button onClick={() => { setCardModal(false); setEditCard({}); }} className="btn-secondary flex-1">Cancelar</button>
+            <button onClick={() => { setCardModal(false); setEditCard({}); setSaveError(""); }} className="btn-secondary flex-1">Cancelar</button>
             <button onClick={saveCard} disabled={loading} className="btn-primary flex-1 flex items-center justify-center gap-2">
-              <Save size={14} /> Salvar
+              {loading ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> : <Save size={14} />}
+              Salvar
             </button>
           </div>
         </div>
       </Modal>
 
       {/* ── MODAL: Conta Fixa ── */}
-      <Modal open={billModal} onClose={() => { setBillModal(false); setEditBill({}); }}
+      <Modal open={billModal} onClose={() => { setBillModal(false); setEditBill({}); setSaveError(""); }}
         title={editBill.id ? "Editar Conta Fixa" : "Nova Conta Fixa"} size="lg">
         <div className="space-y-3">
           <div>
@@ -864,10 +900,17 @@ export default function ConfiguracoesPage() {
             </div>
           </div>
 
+          {saveError && (
+            <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800/30 text-xs text-red-600 dark:text-red-400">
+              <AlertCircle size={13} className="shrink-0 mt-0.5" />
+              <span>{saveError}</span>
+            </div>
+          )}
           <div className="flex gap-2 pt-2">
-            <button onClick={() => { setBillModal(false); setEditBill({}); }} className="btn-secondary flex-1">Cancelar</button>
+            <button onClick={() => { setBillModal(false); setEditBill({}); setSaveError(""); }} className="btn-secondary flex-1">Cancelar</button>
             <button onClick={saveBill} disabled={loading} className="btn-primary flex-1 flex items-center justify-center gap-2">
-              <Save size={14} /> Salvar
+              {loading ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> : <Save size={14} />}
+              Salvar
             </button>
           </div>
         </div>

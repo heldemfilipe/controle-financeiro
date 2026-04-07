@@ -68,6 +68,62 @@ export function isDueSoon(
   return diff >= 0 && diff <= days;
 }
 
+export type DueUrgency = "overdue" | "today" | "tomorrow" | "soon" | "later";
+
+export interface DueInfo {
+  /** Texto legível: "Vence hoje!", "Vence em 3 dias", "Venceu ontem", etc. */
+  label: string;
+  urgency: DueUrgency;
+}
+
+/**
+ * Retorna informação detalhada de vencimento relativa à data atual.
+ *
+ * — overdue  : vencimento já passou (ontem ou mais, ou mês encerrado)
+ * — today    : vence hoje
+ * — tomorrow : vence amanhã
+ * — soon     : vence em 2–5 dias
+ * — later    : vence em 6–10 dias (informativo, sem destaque)
+ *
+ * Retorna null quando o vencimento está a mais de 10 dias ou em mês futuro.
+ */
+export function getDueInfo(
+  dueDay: number | null,
+  month: number,
+  year: number,
+): DueInfo | null {
+  if (!dueDay) return null;
+
+  const now          = new Date();
+  const currentYear  = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
+  const currentDay   = now.getDate();
+
+  // Mês completamente passado (já tratado pelo status "overdue" via isOverdue)
+  if (year < currentYear || (year === currentYear && month < currentMonth)) {
+    return { label: "Mês encerrado", urgency: "overdue" };
+  }
+
+  // Mês futuro → sem urgência
+  if (year > currentYear || (year === currentYear && month > currentMonth)) {
+    return null;
+  }
+
+  // Mês atual: calcula diferença em dias
+  const diff = dueDay - currentDay;
+
+  if (diff < -1) {
+    const d = Math.abs(diff);
+    return { label: `Venceu há ${d} dia${d !== 1 ? "s" : ""}`, urgency: "overdue" };
+  }
+  if (diff === -1) return { label: "Venceu ontem",   urgency: "overdue"  };
+  if (diff === 0)  return { label: "Vence hoje!",    urgency: "today"    };
+  if (diff === 1)  return { label: "Vence amanhã",   urgency: "tomorrow" };
+  if (diff <= 5)   return { label: `Vence em ${diff} dias`, urgency: "soon"  };
+  if (diff <= 10)  return { label: `Vence em ${diff} dias`, urgency: "later" };
+  return null;
+}
+
 /**
  * Calcula o número da parcela atual de forma dinâmica.
  * Se `installment_start_month/year` estiver preenchido, calcula com base no mês selecionado.

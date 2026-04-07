@@ -13,7 +13,8 @@ import {
   getMonthlyIncomes, getIncomeSources,
   getBalanceOverride, upsertBalanceOverride, deleteBalanceOverride,
 } from "@/lib/queries";
-import { formatCurrency, getCurrentMonth, getMonthName, isOverdue, isDueSoon, computeInstallment, getAccConfig, saveAccConfig } from "@/lib/utils";
+import { formatCurrency, getCurrentMonth, getMonthName, isOverdue, isDueSoon, getDueInfo, computeInstallment, getAccConfig, saveAccConfig } from "@/lib/utils";
+import type { DueInfo } from "@/lib/utils";
 import type { AccumuladoConfig } from "@/lib/utils";
 import { computePrevBalance, clearBalanceCache } from "@/lib/balance";
 import { MONTHS } from "@/types";
@@ -276,15 +277,25 @@ export default function GastosMensaisPage() {
     const status  = billSt(bill);
     const amount  = billAmount(bill);
     const payment = billPayments.find(p => p.bill_id === bill.id);
-    const soon    = status === "pending" && isDueSoon(bill.due_day, month, year);
+    const dueInfo: DueInfo | null = status === "pending" ? getDueInfo(bill.due_day, month, year) : null;
+
+    const isUrgent = dueInfo && (dueInfo.urgency === "today" || dueInfo.urgency === "tomorrow" || dueInfo.urgency === "soon");
 
     // Cor do card conforme situação de vencimento
     const rowBg =
       status === "overdue"
         ? "bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800/40"
-        : soon
+        : isUrgent
         ? "bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/40"
         : "bg-white dark:bg-slate-800";
+
+    const dueTextColor =
+      status === "overdue"                           ? "text-red-500 dark:text-red-400" :
+      dueInfo?.urgency === "today"                   ? "text-red-500 dark:text-red-400" :
+      dueInfo?.urgency === "tomorrow"                ? "text-amber-600 dark:text-amber-400" :
+      dueInfo?.urgency === "soon"                    ? "text-amber-600 dark:text-amber-400" :
+      dueInfo?.urgency === "later"                   ? "text-slate-500 dark:text-slate-400" :
+                                                       "text-slate-400 dark:text-slate-500";
 
     return (
       <div className={`flex items-center justify-between rounded-lg px-3 py-2.5 shadow-sm gap-2 ${rowBg}`}>
@@ -294,13 +305,9 @@ export default function GastosMensaisPage() {
             <p className="text-sm font-medium text-slate-700 dark:text-slate-200 truncate">{bill.name}</p>
             <div className="flex items-center gap-1.5 flex-wrap">
               {bill.due_day && (
-                <span className={`text-xs ${
-                  status === "overdue" ? "text-red-500" :
-                  soon ? "text-amber-600 dark:text-amber-400" :
-                  "text-slate-400 dark:text-slate-500"
-                }`}>
+                <span className={`text-xs ${dueTextColor}`}>
                   dia {bill.due_day}
-                  {soon && " · vence em breve"}
+                  {dueInfo && ` · ${dueInfo.label}`}
                 </span>
               )}
               {(() => {
@@ -334,7 +341,10 @@ export default function GastosMensaisPage() {
                 <Pencil size={10} className="text-slate-400 dark:text-slate-500" />
               </button>
             </div>
-            {status === "overdue" && !payment?.paid && (
+            {status === "overdue" && !payment?.paid && dueInfo && (
+              <span className="text-xs text-red-500 font-medium">{dueInfo.label}</span>
+            )}
+            {status === "overdue" && !payment?.paid && !dueInfo && (
               <span className="text-xs text-red-500 font-medium">Vencida!</span>
             )}
           </div>
@@ -352,23 +362,27 @@ export default function GastosMensaisPage() {
     const payment  = cardPayments.find(p => p.card_id === card.id);
     const txs      = cardTransactions.filter(t => t.card_id === card.id);
     const isOpen   = expandedCard === card.id;
-    const soon     = status === "pending" && total > 0 && isDueSoon(card.due_day, month, year);
+    const dueInfo: DueInfo | null = status === "pending" && total > 0 ? getDueInfo(card.due_day, month, year) : null;
+    const isUrgent = dueInfo && (dueInfo.urgency === "today" || dueInfo.urgency === "tomorrow" || dueInfo.urgency === "soon");
     const parcelCount = txs.filter(t => t.installment_total > 1).length;
 
     const cardBg = total > 0 && status === "overdue"
       ? "bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800/40"
-      : total > 0 && soon
+      : total > 0 && isUrgent
         ? "bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/40"
         : "bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/50";
 
     const dayBadge = total > 0 && status === "overdue"
       ? "bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400"
-      : total > 0 && soon
+      : total > 0 && dueInfo?.urgency === "today"
+        ? "bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400"
+      : total > 0 && isUrgent
         ? "bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400"
         : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400";
 
     const barColor = total > 0 && status === "overdue" ? "#ef4444"
-      : total > 0 && soon ? "#f59e0b"
+      : total > 0 && dueInfo?.urgency === "today"   ? "#ef4444"
+      : total > 0 && isUrgent                       ? "#f59e0b"
       : card.color;
 
     return (
@@ -392,7 +406,17 @@ export default function GastosMensaisPage() {
                   <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${dayBadge}`}>
                     Dia {card.due_day}
                   </span>
-                  {soon && <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">· vence em breve</span>}
+                  {dueInfo && (
+                    <span className={`text-xs font-medium ${
+                      dueInfo.urgency === "overdue" || dueInfo.urgency === "today"
+                        ? "text-red-500 dark:text-red-400"
+                        : dueInfo.urgency === "later"
+                        ? "text-slate-400 dark:text-slate-500"
+                        : "text-amber-600 dark:text-amber-400"
+                    }`}>
+                      · {dueInfo.label}
+                    </span>
+                  )}
                   {txs.length > 0 && (
                     <span className="text-xs text-slate-400 dark:text-slate-500">
                       {txs.length} lanç.{parcelCount > 0 && ` · ${parcelCount} parc.`}
@@ -413,11 +437,21 @@ export default function GastosMensaisPage() {
                   {formatCurrency(total)}
                 </p>
                 {status === "paid" ? (
-                  <p className="text-xs text-emerald-600">✓ Pago</p>
+                  <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">✓ Pago</p>
                 ) : status === "overdue" && total > 0 ? (
-                  <p className="text-xs text-red-500 font-medium">Vencida!</p>
-                ) : soon ? (
-                  <p className="text-xs text-amber-600 font-medium">Vence em breve</p>
+                  <p className="text-xs text-red-500 dark:text-red-400 font-medium">
+                    {dueInfo ? dueInfo.label : "Vencida!"}
+                  </p>
+                ) : dueInfo ? (
+                  <p className={`text-xs font-medium ${
+                    dueInfo.urgency === "today"
+                      ? "text-red-500 dark:text-red-400"
+                      : dueInfo.urgency === "later"
+                      ? "text-slate-400 dark:text-slate-500"
+                      : "text-amber-600 dark:text-amber-400"
+                  }`}>
+                    {dueInfo.label}
+                  </p>
                 ) : total > 0 ? (
                   <p className="text-xs text-slate-400 dark:text-slate-500">Pendente</p>
                 ) : null}

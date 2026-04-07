@@ -195,8 +195,10 @@ export default function GastosMensaisPage() {
   const q1CardsSum = q1Cards.reduce((s, c) => s + (cardTotals[c.id] ?? 0), 0);
   const q2CardsSum = q2Cards.reduce((s, c) => s + (cardTotals[c.id] ?? 0), 0);
 
-  const q1Total = q1BillsSum + q1CardsSum + (tithePeriod === "1-15"  ? titheDisplayAmt : 0);
-  const q2Total = q2BillsSum + q2CardsSum + (tithePeriod === "16-30" ? titheDisplayAmt : 0);
+  // Só adiciona dízimo separado se o bill de dízimo existe (is_tithe=true)
+  // Sem titheBill, a conta de dízimo já está em q1/q2BillsSum como regular
+  const q1Total = q1BillsSum + q1CardsSum + (titheBill && tithePeriod === "1-15"  ? titheDisplayAmt : 0);
+  const q2Total = q2BillsSum + q2CardsSum + (titheBill && tithePeriod === "16-30" ? titheDisplayAmt : 0);
   const balance = incomeTotal - q1Total - q2Total;
 
   // ── Handlers ───────────────────────────────────────────────────────────────

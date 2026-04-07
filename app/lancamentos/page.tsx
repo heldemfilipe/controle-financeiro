@@ -16,7 +16,9 @@ import {
   deleteCardTransactionsFollowing, updateCategoryForFollowing, updateAmountForFollowing,
   insertCardTransactions,
   getMonthlyIncomes, upsertMonthlyIncome, toggleIncomeReceived,
+  getTransactionSuggestions,
 } from "@/lib/queries";
+import { DescriptionAutocomplete, type TxSuggestion } from "@/components/ui/DescriptionAutocomplete";
 import { MONTHS } from "@/types";
 import { formatCurrency, getCurrentMonth, installmentEndDate, computeInstallment } from "@/lib/utils";
 import type {
@@ -54,10 +56,16 @@ export default function LancamentosPage() {
   const [isCredit, setIsCredit] = useState(false);
   const [propagateCategory, setPropagateCategory] = useState(false);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const [txSuggestions, setTxSuggestions] = useState<TxSuggestion[]>([]);
 
   const { toast } = useToast();
 
   useEffect(() => { loadAll(); }, [month, year]);
+
+  // Carrega sugestões de descrição uma vez (histórico de todas as transações)
+  useEffect(() => {
+    getTransactionSuggestions().then(setTxSuggestions).catch(console.error);
+  }, []);
 
   async function loadAll() {
     const [srcs, bills, cats, cards, txs, incomes] = await Promise.all([
@@ -238,6 +246,8 @@ export default function LancamentosPage() {
 
       setTxModal(false); setEditTx({}); setIsCredit(false); setPropagateCategory(false);
       await loadAll();
+      // Recarrega sugestões para que a nova descrição apareça imediatamente
+      getTransactionSuggestions().then(setTxSuggestions).catch(console.error);
     } catch (err) {
       console.error("Erro ao salvar lançamento:", err);
       alert("Erro ao salvar. Verifique o console.");
@@ -1020,9 +1030,19 @@ export default function LancamentosPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="label">Descrição</label>
-              <input className="input" placeholder="Ex: Supermercado Assaí"
+              <DescriptionAutocomplete
                 value={editTx.description ?? ""}
-                onChange={e => setEditTx(p => ({ ...p, description: e.target.value }))} />
+                onChange={v => setEditTx(p => ({ ...p, description: v }))}
+                onSelect={s => setEditTx(p => ({
+                  ...p,
+                  description: s.description,
+                  // Preenche categoria e valor típico automaticamente
+                  category: s.category ?? p.category,
+                  ...(s.amount > 0 && !p.amount ? { amount: s.amount } : {}),
+                }))}
+                suggestions={txSuggestions}
+                categories={categories}
+              />
             </div>
             <div>
               <label className="label">Categoria</label>

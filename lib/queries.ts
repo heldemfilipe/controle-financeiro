@@ -216,6 +216,56 @@ export async function updateAmountForFollowing(
   if (error) throw error;
 }
 
+/** Retorna sugestões de descrição baseadas no histórico de transações.
+ *  Agrupa por description, calcula categoria mais usada e valor típico (mediana). */
+export async function getTransactionSuggestions(): Promise<
+  { description: string; category: string | null; amount: number; count: number }[]
+> {
+  const { data, error } = await supabase
+    .from("card_transactions")
+    .select("description, category, amount")
+    .lt("amount", 0)           // apenas despesas (excluir créditos/estornos)
+    .order("id", { ascending: false })
+    .limit(800);
+  if (error) throw error;
+
+  type Entry = {
+    description: string;
+    cats: Map<string, number>;
+    amounts: number[];
+    count: number;
+  };
+  const map = new Map<string, Entry>();
+
+  for (const tx of data ?? []) {
+    const key = tx.description.trim().toLowerCase();
+    if (!map.has(key)) {
+      map.set(key, { description: tx.description.trim(), cats: new Map(), amounts: [], count: 0 });
+    }
+    const e = map.get(key)!;
+    e.count++;
+    e.amounts.push(Math.abs(tx.amount));
+    if (tx.category) e.cats.set(tx.category, (e.cats.get(tx.category) ?? 0) + 1);
+  }
+
+  return Array.from(map.values())
+    .map(e => {
+      // categoria mais frequente
+      let bestCat: string | null = null, bestN = 0;
+      e.cats.forEach((n, cat) => { if (n > bestN) { bestN = n; bestCat = cat; } });
+      // valor típico = mediana
+      const sorted = [...e.amounts].sort((a, b) => a - b);
+      const typical = sorted[Math.floor(sorted.length / 2)] ?? 0;
+      return {
+        description: e.description,
+        category: bestCat,
+        amount: parseFloat(typical.toFixed(2)),
+        count: e.count,
+      };
+    })
+    .sort((a, b) => b.count - a.count);
+}
+
 /** Insere múltiplas parcelas de uma vez (compra parcelada) */
 export async function insertCardTransactions(txs: Partial<CardTransaction>[]) {
   const { data, error } = await supabase

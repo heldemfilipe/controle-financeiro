@@ -292,6 +292,7 @@ export default function LancamentosPage() {
       ];
       return periods
         .map(([key, label]) => ({
+          key,
           label,
           bills: visibleBills
             .filter(b => (b.period ?? null) === key)
@@ -300,7 +301,7 @@ export default function LancamentosPage() {
         .filter(g => g.bills.length > 0);
     } else {
       // Agrupa por categoria × período
-      const groups: { label: string; bills: FixedBill[] }[] = [];
+      const groups: { key: string | null; label: string; bills: FixedBill[] }[] = [];
       const periods: [string | null, string][] = [
         ["1-15",  "1ª Quinzena"],
         ["16-30", "2ª Quinzena"],
@@ -317,7 +318,7 @@ export default function LancamentosPage() {
             const label = key
               ? `${cat.charAt(0).toUpperCase() + cat.slice(1)} · ${periodLabel}`
               : periodLabel;
-            groups.push({ label, bills });
+            groups.push({ key, label, bills });
           }
         });
       });
@@ -464,11 +465,24 @@ export default function LancamentosPage() {
           </div>
 
           <div className="space-y-4">
-            {billsByGroup.map(({ label, bills }) => (
+            {billsByGroup.map(({ key, label, bills }) => (
               <div key={label} className="card transition-colors">
-                <h3 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-3">
-                  {label}
-                </h3>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                    {label}
+                  </h3>
+                  <button
+                    onClick={() => {
+                      setEditBill({ period: key as any });
+                      setFormErrors({});
+                      setBillModal(true);
+                    }}
+                    className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-medium text-primary-600 dark:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors"
+                    title={`Nova conta — ${label}`}
+                  >
+                    <Plus size={11} /> Nova
+                  </button>
+                </div>
                 <div className="space-y-0">
                   {bills.map((bill) => (
                     <div key={bill.id}
@@ -587,7 +601,7 @@ export default function LancamentosPage() {
                         <p className="text-xs text-slate-400 dark:text-slate-500">{card.bank} · Vence dia {card.due_day} · {card.owner}</p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
                       {rawTxs.length > 0 && (
                         <div className="flex bg-slate-100 dark:bg-slate-700/60 rounded-lg p-0.5 text-xs">
                           <button
@@ -616,6 +630,21 @@ export default function LancamentosPage() {
                           >Parcelas</button>
                         </div>
                       )}
+                      {/* Lançamento rápido: cartão já pré-selecionado */}
+                      <button
+                        onClick={() => {
+                          setEditTx({ card_id: card.id, month, year });
+                          setIsCredit(false);
+                          setPropagateCategory(false);
+                          setFormErrors({});
+                          setTxModal(true);
+                        }}
+                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors"
+                        style={{ backgroundColor: `${card.color}22`, color: card.color }}
+                        title={`Novo lançamento em ${card.name}`}
+                      >
+                        <Plus size={11} /> Lançar
+                      </button>
                       <div className="text-right">
                         <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{formatCurrency(total)}</p>
                         <p className="text-xs text-slate-400 dark:text-slate-500">{rawTxs.length} lançamento{rawTxs.length !== 1 ? "s" : ""}</p>
@@ -779,9 +808,19 @@ export default function LancamentosPage() {
       </Modal>
 
       {/* ── MODAL: Nova Conta ── */}
-      <Modal open={billModal} onClose={() => { setBillModal(false); setEditBill({}); }}
+      <Modal open={billModal} onClose={() => { setBillModal(false); setEditBill({}); setFormErrors({}); }}
         title={editBill.id ? "Editar Conta" : "Nova Conta"}>
         <div className="space-y-3">
+          {/* Badge de quinzena pré-selecionada */}
+          {!editBill.id && editBill.period && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary-50 dark:bg-primary-900/20 border border-primary-100 dark:border-primary-800/30">
+              <div className="w-2 h-2 rounded-full bg-primary-500 dark:bg-primary-400 shrink-0" />
+              <span className="text-xs font-semibold text-primary-700 dark:text-primary-400">
+                {editBill.period === "1-15" ? "1ª Quinzena" : "2ª Quinzena"}
+              </span>
+              <span className="text-xs text-slate-400 dark:text-slate-500 ml-auto">pré-selecionada</span>
+            </div>
+          )}
           <div>
             <label className="label">Nome da Conta</label>
             <input className="input" placeholder="Ex: Condomínio"
@@ -938,9 +977,27 @@ export default function LancamentosPage() {
       </Modal>
 
       {/* ── MODAL: Lançamento Cartão ── */}
-      <Modal open={txModal} onClose={() => { setTxModal(false); setEditTx({}); }}
+      <Modal open={txModal} onClose={() => { setTxModal(false); setEditTx({}); setIsCredit(false); setPropagateCategory(false); setFormErrors({}); }}
         title={editTx.id ? "Editar Lançamento" : "Novo Lançamento no Cartão"}>
         <div className="space-y-3">
+
+          {/* Badge de cartão pré-selecionado (via lançamento rápido) */}
+          {!editTx.id && editTx.card_id && (() => {
+            const preCard = creditCards.find(c => c.id === editTx.card_id);
+            if (!preCard) return null;
+            return (
+              <div
+                className="flex items-center gap-2 px-3 py-2 rounded-lg border"
+                style={{ backgroundColor: `${preCard.color}18`, borderColor: `${preCard.color}40` }}
+              >
+                <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: preCard.color }} />
+                <span className="text-xs font-semibold" style={{ color: preCard.color }}>
+                  {preCard.name}
+                </span>
+                <span className="text-xs text-slate-400 dark:text-slate-500 ml-auto">cartão pré-selecionado</span>
+              </div>
+            );
+          })()}
 
           {/* Cartão — só mostra para novo lançamento */}
           {!editTx.id && (

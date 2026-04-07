@@ -21,6 +21,7 @@ import {
 import { DescriptionAutocomplete, type TxSuggestion } from "@/components/ui/DescriptionAutocomplete";
 import { MONTHS } from "@/types";
 import { formatCurrency, getCurrentMonth, installmentEndDate, computeInstallment } from "@/lib/utils";
+import { getOwners, type Owner } from "@/lib/owners";
 import type {
   IncomeSource, FixedBill, CreditCard as CreditCardType,
   CardTransaction, MonthlyIncome, Category,
@@ -57,13 +58,14 @@ export default function LancamentosPage() {
   const [propagateCategory, setPropagateCategory] = useState(false);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [txSuggestions, setTxSuggestions] = useState<TxSuggestion[]>([]);
+  const [owners, setOwners] = useState<Owner[]>([]);
 
   const { toast } = useToast();
 
   useEffect(() => { loadAll(); }, [month, year]);
 
-  // Carrega sugestões de descrição uma vez (histórico de todas as transações)
   useEffect(() => {
+    setOwners(getOwners());
     getTransactionSuggestions().then(setTxSuggestions).catch(console.error);
   }, []);
 
@@ -95,7 +97,7 @@ export default function LancamentosPage() {
     try {
       const isRecurring = editIncome.is_recurring !== false;
       await upsertIncomeSource({
-        owner: "casal", type: "salary", active: true,
+        owner: owners[0]?.id ?? "casal", type: "salary", active: true,
         is_recurring: true,
         one_time_month: null, one_time_year: null,
         ...editIncome,
@@ -396,7 +398,7 @@ export default function LancamentosPage() {
                         <div>
                           <p className="text-sm font-medium text-slate-700 dark:text-slate-200">{src.name}</p>
                           <p className="text-xs text-slate-400 dark:text-slate-500">
-                            {src.due_day ? `Dia ${src.due_day}` : "Sem data fixa"} · {src.owner}
+                            {src.due_day ? `Dia ${src.due_day}` : "Sem data fixa"} · {owners.find(o => o.id === src.owner)?.name ?? src.owner}
                           </p>
                         </div>
                       </div>
@@ -611,7 +613,7 @@ export default function LancamentosPage() {
                       <div className="w-3 h-3 rounded-full" style={{ backgroundColor: card.color }} />
                       <div>
                         <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">{card.name}</p>
-                        <p className="text-xs text-slate-400 dark:text-slate-500">{card.bank} · Vence dia {card.due_day} · {card.owner}</p>
+                        <p className="text-xs text-slate-400 dark:text-slate-500">{card.bank} · Vence dia {card.due_day} · {owners.find(o => o.id === card.owner)?.name ?? card.owner}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -757,11 +759,11 @@ export default function LancamentosPage() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="label">Responsável</label>
-              <select className="input" value={editIncome.owner ?? "casal"}
+              <select className="input" value={editIncome.owner ?? (owners[0]?.id ?? "casal")}
                 onChange={e => setEditIncome(p => ({ ...p, owner: e.target.value as any }))}>
-                <option value="heldem">Heldem</option>
-                <option value="vitoria">Vitoria</option>
-                <option value="casal">Casal</option>
+                {owners.map(o => (
+                  <option key={o.id} value={o.id}>{o.name}</option>
+                ))}
               </select>
             </div>
             <div>
@@ -967,10 +969,11 @@ export default function LancamentosPage() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="label">Titular</label>
-              <select className="input" value={editCard.owner ?? "heldem"}
+              <select className="input" value={editCard.owner ?? (owners[0]?.id ?? "heldem")}
                 onChange={e => setEditCard(p => ({ ...p, owner: e.target.value as any }))}>
-                <option value="heldem">Heldem</option>
-                <option value="vitoria">Vitoria</option>
+                {owners.map(o => (
+                  <option key={o.id} value={o.id}>{o.name}</option>
+                ))}
               </select>
             </div>
             <div>

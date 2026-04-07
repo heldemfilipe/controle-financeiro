@@ -201,6 +201,21 @@ export async function updateCategoryForFollowing(
   if (error) throw error;
 }
 
+/** Propaga o valor para esta parcela e todas as seguintes da mesma compra */
+export async function updateAmountForFollowing(
+  tx: Pick<CardTransaction, "card_id" | "description" | "installment_total" | "installment_current">,
+  amount: number
+) {
+  const { error } = await supabase
+    .from("card_transactions")
+    .update({ amount })
+    .eq("card_id", tx.card_id)
+    .eq("description", tx.description)
+    .eq("installment_total", tx.installment_total)
+    .gte("installment_current", tx.installment_current);
+  if (error) throw error;
+}
+
 /** Insere múltiplas parcelas de uma vez (compra parcelada) */
 export async function insertCardTransactions(txs: Partial<CardTransaction>[]) {
   const { data, error } = await supabase

@@ -13,7 +13,7 @@ import {
   getCategories,
   getCreditCards, upsertCreditCard,
   getCardTransactions, upsertCardTransaction, deleteCardTransaction,
-  deleteCardTransactionsFollowing, updateCategoryForFollowing,
+  deleteCardTransactionsFollowing, updateCategoryForFollowing, updateAmountForFollowing,
   insertCardTransactions,
   getMonthlyIncomes, upsertMonthlyIncome, toggleIncomeReceived,
 } from "@/lib/queries";
@@ -186,19 +186,22 @@ export default function LancamentosPage() {
       if (editTx.id) {
         // Edição: strip credit_cards (campo de join) e salva
         const { credit_cards: _cc, ...txPayload } = editTx as any;
-        await upsertCardTransaction({
-          ...txPayload,
-          category,
-          amount: sign * Math.abs(Number(editTx.amount)),
-        });
-        // Propaga categoria para parcelas seguintes se solicitado
-        if (propagateCategory && totalInstallments > 1) {
-          await updateCategoryForFollowing({
+        const signedAmount = sign * Math.abs(Number(editTx.amount));
+        await upsertCardTransaction({ ...txPayload, category, amount: signedAmount });
+
+        if (totalInstallments > 1) {
+          const followRef = {
             card_id: txPayload.card_id,
             description: txPayload.description,
             installment_total: txPayload.installment_total,
             installment_current: txPayload.installment_current,
-          }, category);
+          };
+          // Propaga valor automaticamente para parcelas seguintes
+          await updateAmountForFollowing(followRef, signedAmount);
+          // Propaga categoria se solicitado
+          if (propagateCategory) {
+            await updateCategoryForFollowing(followRef, category);
+          }
         }
       } else if (totalInstallments === 1) {
         // Compra à vista
@@ -1124,9 +1127,15 @@ export default function LancamentosPage() {
 
           {/* Info de parcela no modo edição */}
           {editTx.id && (editTx.installment_total ?? 1) > 1 && (
-            <p className="text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-700/50 rounded-lg px-3 py-2">
-              Parcela {editTx.installment_current}/{editTx.installment_total} — apenas este mês será alterado
-            </p>
+            <div className="bg-slate-50 dark:bg-slate-700/50 rounded-lg px-3 py-2 space-y-0.5">
+              <p className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                Parcela {editTx.installment_current}/{editTx.installment_total}
+              </p>
+              <p className="text-xs text-slate-400 dark:text-slate-500">
+                O valor será aplicado nesta e em todas as parcelas seguintes.
+                A categoria só propaga se o toggle abaixo estiver ativo.
+              </p>
+            </div>
           )}
 
           {/* Propagar categoria — modo edição, parcelado */}

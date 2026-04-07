@@ -117,7 +117,7 @@ export default function ConfiguracoesPage() {
     if (!editCard.name || !editCard.due_day || !editCard.bank) return;
     setSaveError(""); setLoading(true);
     try {
-      await upsertCreditCard({ color: "#6366f1", active: true, owner: "pessoa1", ...editCard });
+      await upsertCreditCard({ color: "#6366f1", active: true, owner: "heldem", ...editCard });
       setCardModal(false); setEditCard({});
       await loadAll(); showSaved();
     } catch (err: any) {
@@ -332,20 +332,20 @@ export default function ConfiguracoesPage() {
                 className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/50 rounded-xl p-4 flex items-center justify-between hover:border-slate-200 dark:hover:border-slate-600 transition-colors">
                 <div className="flex items-center gap-3 min-w-0">
                   <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                    src.owner === "pessoa1" ? "bg-primary-50 dark:bg-primary-900/20" :
-                    src.owner === "pessoa2" ? "bg-pink-50 dark:bg-pink-900/20" : "bg-emerald-50 dark:bg-emerald-900/20"
+                    src.owner === "heldem" ? "bg-primary-50 dark:bg-primary-900/20" :
+                    src.owner === "vitoria" ? "bg-pink-50 dark:bg-pink-900/20" : "bg-emerald-50 dark:bg-emerald-900/20"
                   }`}>
                     <User size={15} className={
-                      src.owner === "pessoa1" ? "text-primary-600 dark:text-primary-400" :
-                      src.owner === "pessoa2" ? "text-pink-600 dark:text-pink-400" : "text-emerald-600 dark:text-emerald-400"
+                      src.owner === "heldem" ? "text-primary-600 dark:text-primary-400" :
+                      src.owner === "vitoria" ? "text-pink-600 dark:text-pink-400" : "text-emerald-600 dark:text-emerald-400"
                     } />
                   </div>
                   <div className="min-w-0">
                     <p className="font-semibold text-slate-700 dark:text-slate-200 text-sm truncate">{src.name}</p>
                     <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                       <span className={`text-xs px-1.5 py-0.5 rounded-full ${
-                        src.owner === "pessoa1" ? "bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-400" :
-                        src.owner === "pessoa2" ? "bg-pink-50 dark:bg-pink-900/20 text-pink-700 dark:text-pink-400" :
+                        src.owner === "heldem" ? "bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-400" :
+                        src.owner === "vitoria" ? "bg-pink-50 dark:bg-pink-900/20 text-pink-700 dark:text-pink-400" :
                         "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400"
                       }`}>
                         {src.owner.charAt(0).toUpperCase() + src.owner.slice(1)}
@@ -431,7 +431,7 @@ export default function ConfiguracoesPage() {
                   <div className="space-y-0.5">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className={`text-xs px-1.5 py-0.5 rounded-full ${
-                        card.owner === "pessoa1"
+                        card.owner === "heldem"
                           ? "bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-400"
                           : "bg-pink-50 dark:bg-pink-900/20 text-pink-700 dark:text-pink-400"
                       }`}>
@@ -716,8 +716,8 @@ export default function ConfiguracoesPage() {
               <label className="label">Responsável</label>
               <select className="input" value={editSource.owner ?? "casal"}
                 onChange={e => setEditSource(p => ({ ...p, owner: e.target.value as any }))}>
-                <option value="pessoa1">Pessoa 1</option>
-                <option value="pessoa2">Pessoa 2</option>
+                <option value="heldem">Heldem</option>
+                <option value="vitoria">Vitoria</option>
                 <option value="casal">Casal</option>
               </select>
             </div>
@@ -785,10 +785,10 @@ export default function ConfiguracoesPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="label">Titular</label>
-              <select className="input" value={editCard.owner ?? "pessoa1"}
+              <select className="input" value={editCard.owner ?? "heldem"}
                 onChange={e => setEditCard(p => ({ ...p, owner: e.target.value as any }))}>
-                <option value="pessoa1">Pessoa 1</option>
-                <option value="pessoa2">Pessoa 2</option>
+                <option value="heldem">Heldem</option>
+                <option value="vitoria">Vitoria</option>
                 <option value="casal">Casal</option>
               </select>
             </div>

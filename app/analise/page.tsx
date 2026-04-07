@@ -39,6 +39,8 @@ export default function AnalisePage() {
 
   const [categories,     setCategories]    = useState<Category[]>([]);
   const [fixedBills,     setFixedBills]     = useState<FixedBill[]>([]);
+  const [titheBill,      setTitheBill]      = useState<FixedBill | null>(null);
+  const [titheAmount,    setTitheAmount]    = useState(0);
   const [monthlyBillAmt, setMonthlyBillAmt] = useState<Record<string, number>>({});
   const [cardByCat,      setCardByCat]      = useState<Record<string, number>>({});
   const [incomeTotal,    setIncomeTotal]    = useState(0);
@@ -59,8 +61,10 @@ export default function AnalisePage() {
       ]);
 
       setCategories(cats);
+      const tithe = bills.find(b => b.is_tithe) ?? null;
       const regular = filterRegularBills(bills);
       setFixedBills(regular);
+      setTitheBill(tithe);
 
       const billAmts: Record<string, number> = {};
       regular.forEach(b => {
@@ -75,6 +79,14 @@ export default function AnalisePage() {
         return s + (mi?.amount ?? src.base_amount);
       }, 0);
       setIncomeTotal(inc);
+
+      // Dízimo: usa valor do pagamento ou 10% da renda
+      if (tithe) {
+        const tithePayment = payments.find(p => p.bill_id === tithe.id);
+        setTitheAmount(tithePayment?.amount ?? inc * 0.1);
+      } else {
+        setTitheAmount(0);
+      }
 
       // Saldo acumulado anterior (usa módulo centralizado com suporte a overrides)
       const prev = await computePrevBalance(month, year);
@@ -97,6 +109,11 @@ export default function AnalisePage() {
     const cat = b.category || "outros";
     categoryMap[cat] = (categoryMap[cat] ?? 0) + (monthlyBillAmt[b.id] ?? b.amount);
   });
+  // Inclui dízimo na categoria correspondente
+  if (titheBill && titheAmount > 0) {
+    const titheCat = titheBill.category || "essencial";
+    categoryMap[titheCat] = (categoryMap[titheCat] ?? 0) + titheAmount;
+  }
   Object.entries(cardByCat).forEach(([cat, amount]) => {
     categoryMap[cat] = (categoryMap[cat] ?? 0) + amount;
   });

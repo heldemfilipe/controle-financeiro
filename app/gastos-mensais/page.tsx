@@ -15,6 +15,7 @@ import {
 } from "@/lib/queries";
 import { formatCurrency, getCurrentMonth, getMonthName, isOverdue, isDueSoon, computeInstallment, getAccConfig, saveAccConfig } from "@/lib/utils";
 import type { AccumuladoConfig } from "@/lib/utils";
+import { computePrevBalance, clearBalanceCache } from "@/lib/balance";
 import { MONTHS } from "@/types";
 import type {
   FixedBill, CreditCard as CCType, MonthlyBillPayment,
@@ -102,8 +103,9 @@ export default function GastosMensaisPage() {
   async function loadAll() {
     setLoading(true);
     try {
+      clearBalanceCache();
       const [
-        bills, payments, cards, cardPays, txs, sources, incomes, allSources, override,
+        bills, payments, cards, cardPays, txs, sources, incomes, override,
       ] = await Promise.all([
         getFixedBills(),
         getMonthlyBillPayments(month, year),
@@ -112,7 +114,6 @@ export default function GastosMensaisPage() {
         getCardTransactions(month, year),
         getIncomeSources(month, year),
         getMonthlyIncomes(month, year),
-        getIncomeSources(),             // todas as fontes (incluindo avulsas de meses passados)
         getBalanceOverride(month, year),
       ]);
       setBalanceOverride(override);
@@ -133,62 +134,9 @@ export default function GastosMensaisPage() {
       });
       setCardTotals(totals);
 
-      // ── Saldo acumulado: soma os saldos do mês de início até mês-1 ─────────
-
-      const cfg = accConfig; // snapshot do config atual
-      // Determina quais meses entram na acumulação
-      let monthsToLoad: number[];
-      if (year === cfg.startYear) {
-        // Mesmo ano: acumula apenas de startMonth até month-1
-        monthsToLoad = month > cfg.startMonth
-          ? Array.from({ length: month - cfg.startMonth }, (_, i) => cfg.startMonth + i)
-          : [];
-      } else if (year > cfg.startYear) {
-        // Ano posterior: acumula tudo de Jan até month-1
-        monthsToLoad = month > 1
-          ? Array.from({ length: month - 1 }, (_, i) => i + 1)
-          : [];
-      } else {
-        // Ano anterior ao início: nada
-        monthsToLoad = [];
-      }
-
-      if (monthsToLoad.length === 0) {
-        setPrevBalance(cfg.saldoInicial);
-      } else {
-        const monthlyBalances = await Promise.all(
-          monthsToLoad.map(async (m) => {
-            const [incData, billPay, txs2] = await Promise.all([
-              getMonthlyIncomes(m, year),
-              getMonthlyBillPayments(m, year),
-              getCardTransactions(m, year),
-            ]);
-            // Soma receitas do mês histórico: inclui avulsas do mês correto
-            const sourcesM = allSources.filter(s =>
-              s.is_recurring !== false ||
-              (s.one_time_month === m && s.one_time_year === year)
-            );
-            const inc2 = sourcesM.reduce((s, src) => {
-              const rec = incData.find((i) => i.source_id === src.id);
-              return s + (rec?.amount ?? src.base_amount);
-            }, 0);
-            const activeBills = bills.filter(bill => {
-              if (!bill.installment_total) return true;
-              if (bill.installment_start_month == null || bill.installment_start_year == null) return true;
-              return computeInstallment(bill, m, year) !== null;
-            });
-            const billIds2 = billPay.map(b => b.bill_id);
-            const missingBills2 = activeBills.filter(b => !billIds2.includes(b.id));
-            const bills2 = [
-              ...billPay.map(b => b.amount ?? (b as any).fixed_bills?.amount ?? activeBills.find(f => f.id === b.bill_id)?.amount ?? 0),
-              ...missingBills2.map(b => b.amount),
-            ].reduce((s, v) => s + v, 0);
-            const cards2 = txs2.reduce((s, t) => s - t.amount, 0);
-            return inc2 - bills2 - cards2;
-          })
-        );
-        setPrevBalance(cfg.saldoInicial + monthlyBalances.reduce((s, v) => s + v, 0));
-      }
+      // ── Saldo acumulado anterior — módulo centralizado (respeita overrides + carry-over + dízimo) ──
+      const prev = await computePrevBalance(month, year, accConfig);
+      setPrevBalance(prev);
     } finally {
       setLoading(false);
     }

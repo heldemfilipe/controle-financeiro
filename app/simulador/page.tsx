@@ -7,11 +7,9 @@ import {
 } from "recharts";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ChartTooltip } from "@/components/ui/ChartTooltip";
-import {
-  getFixedBills, getIncomeSources, getMonthlyIncomes,
-  getMonthlyBillPayments, getCardTransactions,
-} from "@/lib/queries";
+import { getFixedBills } from "@/lib/queries";
 import { formatCurrency, getMonthName, computeInstallment, getAccConfig } from "@/lib/utils";
+import { computeYearBalances, clearBalanceCache } from "@/lib/balance";
 import { calculateAmortization, loanSummary } from "@/lib/loan";
 import { MONTH_SHORT } from "@/types";
 import type { FixedBill } from "@/types";
@@ -264,96 +262,33 @@ export default function SimuladorPage() {
   async function loadYear() {
     setLoading(true);
     try {
-      const [allBills, sources] = await Promise.all([getFixedBills(), getIncomeSources()]);
+      const allBills = await getFixedBills();
       setBills(allBills);
       const cfg = getAccConfig();
       setAccCfg(cfg);
 
-      // Carry-over: saldoInicial + saldo acumulado de anos anteriores
-      let startBal = cfg.saldoInicial;
-      if (year > cfg.startYear) {
-        const prevEntries: { m: number; y: number }[] = [];
-        for (let y = cfg.startYear; y < year; y++) {
-          const fromM = y === cfg.startYear ? cfg.startMonth : 1;
-          for (let m = fromM; m <= 12; m++) prevEntries.push({ m, y });
-        }
-        const prevSaldos = await Promise.all(
-          prevEntries.map(async ({ m, y: py }) => {
-            const [inc, bp, txs] = await Promise.all([
-              getMonthlyIncomes(m, py),
-              getMonthlyBillPayments(m, py),
-              getCardTransactions(m, py),
-            ]);
-            const rec = sources.reduce((s, src) => {
-              const mi = inc.find((x: any) => x.source_id === src.id);
-              if (src.is_recurring === false) {
-                if (src.one_time_month !== m || src.one_time_year !== py) return s;
-                return s + (mi?.amount ?? src.base_amount);
-              }
-              return s + (mi?.amount ?? src.base_amount);
-            }, 0);
-            const paidIds = bp.map((b: any) => b.bill_id);
-            const missing = allBills.filter(b => {
-              if (paidIds.includes(b.id)) return false;
-              if (!b.installment_total) return true;
-              if (b.installment_start_month == null || b.installment_start_year == null) return true;
-              return computeInstallment(b, m, py) !== null;
-            });
-            const billsTotal = [
-              ...bp.map((b: any) => b.amount ?? b.fixed_bills?.amount ?? 0),
-              ...missing.map((b: any) => b.amount),
-            ].reduce((s: number, v: number) => s + v, 0);
-            const cartoes = txs.reduce((s: number, t: any) => s - t.amount, 0);
-            return rec - billsTotal - cartoes;
-          })
-        );
-        startBal += prevSaldos.reduce((s, v) => s + v, 0);
-      }
+      // Usa módulo centralizado (respeita overrides, carry-over, dízimo dinâmico)
+      clearBalanceCache();
+      const yearData = await computeYearBalances(year, cfg);
+
+      // Calcula startBalance (carry-over) para applyMods recalcular o cenário
+      // Encontra o primeiro mês com acumulação válida e deduz o saldo dele
+      const firstValid = yearData.find(md => md.saldoAcumulado !== null);
+      const startBal = firstValid
+        ? firstValid.saldoAcumulado! - firstValid.balance
+        : cfg.saldoInicial;
       setYearStartBalance(startBal);
 
-      const rawMonths = await Promise.all(
-        Array.from({ length: 12 }, async (_, i) => {
-          const month = i + 1;
-          const [incomes, billPays, txs] = await Promise.all([
-            getMonthlyIncomes(month, year),
-            getMonthlyBillPayments(month, year),
-            getCardTransactions(month, year),
-          ]);
-
-          const receitas = sources.reduce((s, src) => {
-            const mi = incomes.find(x => x.source_id === src.id);
-            if (src.is_recurring === false) {
-              if (src.one_time_month !== month || src.one_time_year !== year) return s;
-              return s + (mi?.amount ?? src.base_amount);
-            }
-            return s + (mi?.amount ?? src.base_amount);
-          }, 0);
-
-          const paidIds = billPays.map(b => b.bill_id);
-          const missing = allBills.filter(b => {
-            if (paidIds.includes(b.id)) return false;
-            if (!b.installment_total) return true;
-            if (b.installment_start_month == null || b.installment_start_year == null) return true;
-            return computeInstallment(b, month, year) !== null;
-          });
-          const billsTotal = [
-            ...billPays.map(b => b.amount ?? b.fixed_bills?.amount ?? 0),
-            ...missing.map(b => b.amount),
-          ].reduce((s, v) => s + v, 0);
-          const cartoes = txs.reduce((s, t) => s - t.amount, 0);
-
-          return { month, name: MONTH_SHORT[i], receitas, billsTotal, cartoes, despesas: billsTotal + cartoes, saldo: receitas - billsTotal - cartoes, saldoAcumulado: 0 };
-        })
-      );
-
-      let acc = startBal;
-      setBaseData(rawMonths.map(m => {
-        if (year === cfg.startYear && m.month < cfg.startMonth) {
-          return { ...m, saldoAcumulado: 0 };
-        }
-        acc += m.saldo;
-        return { ...m, saldoAcumulado: acc };
-      }));
+      setBaseData(yearData.map((md, i) => ({
+        month: i + 1,
+        name: MONTH_SHORT[i],
+        receitas: md.totalIncome,
+        billsTotal: md.totalBills,
+        cartoes: md.totalCards,
+        despesas: md.totalBills + md.totalCards,
+        saldo: md.balance,
+        saldoAcumulado: md.saldoAcumulado ?? 0,
+      })));
     } finally { setLoading(false); }
   }
 

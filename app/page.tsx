@@ -19,7 +19,7 @@ import {
   getMonthlyCardPayments, getIncomeSources, getCategories,
 } from "@/lib/queries";
 import { computeYearBalances, clearBalanceCache } from "@/lib/balance";
-import { formatCurrency, getMonthName, getCurrentMonth, getAccConfig, computeInstallment } from "@/lib/utils";
+import { formatCurrency, getMonthName, getCurrentMonth, computeInstallment } from "@/lib/utils";
 import { MONTH_SHORT } from "@/types";
 import type { Category } from "@/types";
 
@@ -206,20 +206,16 @@ export default function DashboardPage() {
 
       setCatKeys(finalCatKeys.map((k, i) => ({ key: k, color: getCatColor(k, cats, i) })));
 
-      // Saldo acumulado
-      const accCfg = getAccConfig();
-      let running = accCfg.saldoInicial;
-      const ydWithAcc = yd.map((d, i) => {
-        const m = i + 1;
-        if (accCfg.startYear === year && m < accCfg.startMonth) {
-          return { ...d, saldoAcumulado: null as unknown as number };
-        }
-        running += d.receitas - d.despesas;
-        return { ...d, saldoAcumulado: running };
-      });
+      // Saldo acumulado — usa módulo centralizado (respeita overrides + carry-over)
+      clearBalanceCache();
+      const accYear = await computeYearBalances(year);
+      const ydWithAcc = yd.map((d, i) => ({
+        ...d,
+        saldoAcumulado: accYear[i]?.saldoAcumulado ?? null,
+      }));
       setYearlyData(ydWithAcc);
 
-      const monthAcc = ydWithAcc[month - 1]?.saldoAcumulado ?? null;
+      const monthAcc = accYear[month - 1]?.saldoAcumulado ?? null;
       setAccBalance(typeof monthAcc === "number" ? monthAcc : null);
 
     } catch (e) {

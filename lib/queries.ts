@@ -1,7 +1,7 @@
 import { supabase } from "./supabase";
 import type {
   IncomeSource, FixedBill, CreditCard, CardTransaction, Category,
-  MonthlyBillPayment, MonthlyCardPayment, MonthlyIncome, MonthlyBalanceOverride,
+  MonthlyBillPayment, MonthlyCardPayment, MonthlyIncome, MonthlyBalanceOverride, BillAdvance,
 } from "@/types";
 
 // ─── Categories ───────────────────────────────────────────────────────────────
@@ -466,6 +466,66 @@ export async function deleteBalanceOverride(month: number, year: number) {
     .delete()
     .eq("month", month)
     .eq("year", year);
+  if (error) throw error;
+}
+
+// ─── Bill Advances (Adiantamentos) ───────────────────────────────────────────
+
+/** Retorna adiantamentos FEITOS em um determinado mês (despesas extras deste mês) */
+export async function getBillAdvancesMadeIn(month: number, year: number): Promise<BillAdvance[]> {
+  const { data, error } = await supabase
+    .from("bill_advances")
+    .select("*, fixed_bills(*)")
+    .eq("paid_month", month)
+    .eq("paid_year", year);
+  if (error) throw error;
+  return (data ?? []) as BillAdvance[];
+}
+
+/** Retorna adiantamentos PARA um determinado mês (contas pré-pagas neste mês) */
+export async function getBillAdvancesForMonth(month: number, year: number): Promise<BillAdvance[]> {
+  const { data, error } = await supabase
+    .from("bill_advances")
+    .select("*, fixed_bills(*)")
+    .eq("target_month", month)
+    .eq("target_year", year);
+  if (error) throw error;
+  return (data ?? []) as BillAdvance[];
+}
+
+/** Cria um adiantamento de conta */
+export async function createBillAdvance(
+  billId: string,
+  targetMonth: number,
+  targetYear: number,
+  paidMonth: number,
+  paidYear: number,
+  amount: number,
+  notes?: string,
+): Promise<BillAdvance> {
+  const { data, error } = await supabase
+    .from("bill_advances")
+    .upsert({
+      bill_id: billId,
+      target_month: targetMonth,
+      target_year: targetYear,
+      paid_month: paidMonth,
+      paid_year: paidYear,
+      amount,
+      notes: notes ?? null,
+    }, { onConflict: "bill_id,target_month,target_year" })
+    .select("*, fixed_bills(*)")
+    .single();
+  if (error) throw error;
+  return data as BillAdvance;
+}
+
+/** Remove um adiantamento */
+export async function deleteBillAdvance(id: string): Promise<void> {
+  const { error } = await supabase
+    .from("bill_advances")
+    .delete()
+    .eq("id", id);
   if (error) throw error;
 }
 

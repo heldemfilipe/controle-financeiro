@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CheckCircle2, Clock, AlertTriangle, CreditCard, FileText, Pencil, ChevronDown, ChevronRight, Settings, Download, Sliders, LayoutList, LayoutGrid } from "lucide-react";
+import { CheckCircle2, Clock, AlertTriangle, CreditCard, FileText, Pencil, ChevronDown, ChevronRight, Settings, Download, Sliders, LayoutList, LayoutGrid, ChevronsRight, X } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { MonthSelector } from "@/components/ui/MonthSelector";
 import { Toggle } from "@/components/ui/Toggle";
@@ -12,6 +12,7 @@ import {
   getCreditCards, getCardTransactions, getMonthlyCardPayments, toggleCardPaid,
   getMonthlyIncomes, getIncomeSources,
   getBalanceOverride, upsertBalanceOverride, deleteBalanceOverride,
+  getBillAdvancesMadeIn, getBillAdvancesForMonth, createBillAdvance, deleteBillAdvance,
 } from "@/lib/queries";
 import { formatCurrency, getCurrentMonth, getMonthName, isOverdue, isDueSoon, getDueInfo, computeInstallment, getAccConfig, saveAccConfig } from "@/lib/utils";
 import type { DueInfo } from "@/lib/utils";
@@ -20,7 +21,7 @@ import { computePrevBalance, clearBalanceCache } from "@/lib/balance";
 import { MONTHS } from "@/types";
 import type {
   FixedBill, CreditCard as CCType, MonthlyBillPayment,
-  MonthlyCardPayment, IncomeSource, MonthlyIncome, CardTransaction, MonthlyBalanceOverride,
+  MonthlyCardPayment, IncomeSource, MonthlyIncome, CardTransaction, MonthlyBalanceOverride, BillAdvance,
 } from "@/types";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -89,6 +90,17 @@ export default function GastosMensaisPage() {
   const [overrideModal, setOverrideModal] = useState(false);
   const [overrideForm, setOverrideForm] = useState({ autoZero: false, amount: "0", notes: "" });
 
+  // ── Adiantamentos ────────────────────────────────────────────────────────
+  const [advancesMadeThisMonth, setAdvancesMadeThisMonth] = useState<BillAdvance[]>([]);
+  const [advancesForThisMonth,  setAdvancesForThisMonth]  = useState<BillAdvance[]>([]);
+  const [advanceModal, setAdvanceModal] = useState<{
+    bill: FixedBill;
+    targetMonth: number;
+    targetYear: number;
+    amount: string;
+    notes: string;
+  } | null>(null);
+
   // ── View mode ────────────────────────────────────────────────────────────
   const [viewMode, setViewMode] = useState<"cards" | "planilha">("cards");
 
@@ -107,6 +119,7 @@ export default function GastosMensaisPage() {
       clearBalanceCache();
       const [
         bills, payments, cards, cardPays, txs, sources, incomes, override,
+        advMade, advFor,
       ] = await Promise.all([
         getFixedBills(),
         getMonthlyBillPayments(month, year),
@@ -116,8 +129,12 @@ export default function GastosMensaisPage() {
         getIncomeSources(month, year),
         getMonthlyIncomes(month, year),
         getBalanceOverride(month, year),
+        getBillAdvancesMadeIn(month, year),
+        getBillAdvancesForMonth(month, year),
       ]);
       setBalanceOverride(override);
+      setAdvancesMadeThisMonth(advMade);
+      setAdvancesForThisMonth(advFor);
 
       setFixedBills(bills);
       setBillPayments(payments);
@@ -161,10 +178,27 @@ export default function GastosMensaisPage() {
     return s + (mi?.amount ?? src.base_amount);
   }, 0);
 
+  // Receita dividida por quinzena (baseada no due_day da fonte de renda)
+  const q1Income = incomeSources.reduce((s, src) => {
+    if ((src.due_day ?? 99) > 15) return s;
+    const mi = monthlyIncomes.find(i => i.source_id === src.id);
+    return s + (mi?.amount ?? src.base_amount);
+  }, 0);
+  const q2Income = incomeTotal - q1Income;
+
+  // IDs de contas que já foram pagas antecipadamente em um mês anterior
+  const advancedBillIds = new Set(advancesForThisMonth.map(a => a.bill_id));
+
   /** Valor efetivo da conta no mês (payment sobrescreve a base) */
   function billAmount(bill: FixedBill): number {
     const p = billPayments.find(p => p.bill_id === bill.id);
     return p?.amount ?? (bill.is_tithe ? tithe.total : bill.amount);
+  }
+
+  /** Valor que entra no cálculo de saldo — 0 se a conta foi adiantada em mês anterior */
+  function billEffectiveAmount(bill: FixedBill): number {
+    if (advancedBillIds.has(bill.id)) return 0;
+    return billAmount(bill);
   }
 
   function billSt(bill: FixedBill) {
@@ -191,15 +225,23 @@ export default function GastosMensaisPage() {
   const titheDisplayAmt   = tithePayment?.amount ?? tithe.total;
   const tithePeriod       = titheBill?.period ?? "16-30";
 
-  const q1BillsSum = q1Bills.reduce((s, b) => s + billAmount(b), 0);
-  const q2BillsSum = q2Bills.reduce((s, b) => s + billAmount(b), 0);
+  const q1BillsSum = q1Bills.reduce((s, b) => s + billEffectiveAmount(b), 0);
+  const q2BillsSum = q2Bills.reduce((s, b) => s + billEffectiveAmount(b), 0);
   const q1CardsSum = q1Cards.reduce((s, c) => s + (cardTotals[c.id] ?? 0), 0);
   const q2CardsSum = q2Cards.reduce((s, c) => s + (cardTotals[c.id] ?? 0), 0);
 
+  // Adiantamentos feitos neste mês (soma por período da conta adiantada)
+  const q1AdvancesSum = advancesMadeThisMonth
+    .filter(a => fixedBills.find(b => b.id === a.bill_id)?.period === "1-15")
+    .reduce((s, a) => s + a.amount, 0);
+  const q2AdvancesSum = advancesMadeThisMonth
+    .filter(a => (fixedBills.find(b => b.id === a.bill_id)?.period ?? "16-30") !== "1-15")
+    .reduce((s, a) => s + a.amount, 0);
+
   // Só adiciona dízimo separado se o bill de dízimo existe (is_tithe=true)
   // Sem titheBill, a conta de dízimo já está em q1/q2BillsSum como regular
-  const q1Total = q1BillsSum + q1CardsSum + (titheBill && tithePeriod === "1-15"  ? titheDisplayAmt : 0);
-  const q2Total = q2BillsSum + q2CardsSum + (titheBill && tithePeriod === "16-30" ? titheDisplayAmt : 0);
+  const q1Total = q1BillsSum + q1CardsSum + q1AdvancesSum + (titheBill && tithePeriod === "1-15"  ? titheDisplayAmt : 0);
+  const q2Total = q2BillsSum + q2CardsSum + q2AdvancesSum + (titheBill && tithePeriod === "16-30" ? titheDisplayAmt : 0);
   const balance = incomeTotal - q1Total - q2Total;
 
   // ── Handlers ───────────────────────────────────────────────────────────────
@@ -261,6 +303,42 @@ export default function GastosMensaisPage() {
     setEditModal({ bill, amount: String(billAmount(bill)), notes: p?.notes ?? "" });
   }
 
+  function openAdvanceModal(bill: FixedBill) {
+    // Sugere o próximo mês como alvo padrão
+    const nextMonth = month === 12 ? 1 : month + 1;
+    const nextYear  = month === 12 ? year + 1 : year;
+    setAdvanceModal({ bill, targetMonth: nextMonth, targetYear: nextYear, amount: String(billAmount(bill)), notes: "" });
+  }
+
+  async function saveAdvance() {
+    if (!advanceModal) return;
+    try {
+      await createBillAdvance(
+        advanceModal.bill.id,
+        advanceModal.targetMonth,
+        advanceModal.targetYear,
+        month, year,
+        Number(advanceModal.amount),
+        advanceModal.notes || undefined,
+      );
+      setAdvanceModal(null);
+      toast(`Adiantamento registrado — ${advanceModal.bill.name} pré-pago para ${MONTHS[advanceModal.targetMonth - 1]}/${advanceModal.targetYear}`);
+      await loadAll();
+    } catch {
+      toast("Erro ao registrar adiantamento", "error");
+    }
+  }
+
+  async function removeAdvance(id: string) {
+    try {
+      await deleteBillAdvance(id);
+      toast("Adiantamento removido");
+      await loadAll();
+    } catch {
+      toast("Erro ao remover adiantamento", "error");
+    }
+  }
+
   async function saveEdit() {
     if (!editModal) return;
     await updateBillPaymentAmount(
@@ -274,16 +352,20 @@ export default function GastosMensaisPage() {
   // ── Render: linha de conta ─────────────────────────────────────────────────
 
   function BillRow({ bill }: { bill: FixedBill }) {
-    const status  = billSt(bill);
+    const advance  = advancesForThisMonth.find(a => a.bill_id === bill.id);
+    const isAdvanced = !!advance;
+
+    const status  = isAdvanced ? "paid" : billSt(bill);
     const amount  = billAmount(bill);
     const payment = billPayments.find(p => p.bill_id === bill.id);
-    const dueInfo: DueInfo | null = status === "pending" ? getDueInfo(bill.due_day, month, year) : null;
+    const dueInfo: DueInfo | null = (status === "pending" && !isAdvanced) ? getDueInfo(bill.due_day, month, year) : null;
 
     const isUrgent = dueInfo && (dueInfo.urgency === "today" || dueInfo.urgency === "tomorrow" || dueInfo.urgency === "soon");
 
     // Cor do card conforme situação de vencimento
-    const rowBg =
-      status === "overdue"
+    const rowBg = isAdvanced
+      ? "bg-violet-50 dark:bg-violet-900/10 border border-violet-200 dark:border-violet-800/30"
+      : status === "overdue"
         ? "bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800/40"
         : isUrgent
         ? "bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/40"
@@ -302,26 +384,41 @@ export default function GastosMensaisPage() {
         <div className="flex items-center gap-2 min-w-0">
           <StatusIcon status={status} />
           <div className="min-w-0">
-            <p className="text-sm font-medium text-slate-700 dark:text-slate-200 truncate">{bill.name}</p>
             <div className="flex items-center gap-1.5 flex-wrap">
-              {bill.due_day && (
-                <span className={`text-xs ${dueTextColor}`}>
-                  dia {bill.due_day}
-                  {dueInfo && ` · ${dueInfo.label}`}
+              <p className="text-sm font-medium text-slate-700 dark:text-slate-200 truncate">{bill.name}</p>
+              {isAdvanced && (
+                <span className="text-xs px-1.5 py-0.5 rounded-full bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300 font-medium shrink-0">
+                  Adiantado
                 </span>
               )}
-              {(() => {
-                const inst = computeInstallment(bill, month, year);
-                return inst ? (
-                  <span className="text-xs text-slate-400 dark:text-slate-500">
-                    · {inst.current}/{inst.total}x
-                  </span>
-                ) : null;
-              })()}
-              {payment?.notes && (
-                <span className="text-xs text-amber-600 dark:text-amber-400 italic truncate max-w-[100px]">
-                  {payment.notes}
+            </div>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {isAdvanced ? (
+                <span className="text-xs text-violet-500 dark:text-violet-400">
+                  Pago em {MONTHS[advance.paid_month - 1]}/{advance.paid_year}
                 </span>
+              ) : (
+                <>
+                  {bill.due_day && (
+                    <span className={`text-xs ${dueTextColor}`}>
+                      dia {bill.due_day}
+                      {dueInfo && ` · ${dueInfo.label}`}
+                    </span>
+                  )}
+                  {(() => {
+                    const inst = computeInstallment(bill, month, year);
+                    return inst ? (
+                      <span className="text-xs text-slate-400 dark:text-slate-500">
+                        · {inst.current}/{inst.total}x
+                      </span>
+                    ) : null;
+                  })()}
+                  {payment?.notes && (
+                    <span className="text-xs text-amber-600 dark:text-amber-400 italic truncate max-w-[100px]">
+                      {payment.notes}
+                    </span>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -330,25 +427,40 @@ export default function GastosMensaisPage() {
         <div className="flex items-center gap-2 shrink-0">
           <div className="text-right">
             <div className="flex items-center gap-1 justify-end">
-              <span className="text-sm font-semibold text-red-600 dark:text-red-400">
+              <span className={`text-sm font-semibold ${isAdvanced ? "text-violet-500 dark:text-violet-400 line-through" : "text-red-600 dark:text-red-400"}`}>
                 -{formatCurrency(amount)}
               </span>
-              <button
-                onClick={() => openEdit(bill)}
-                title="Editar valor deste mês"
-                className="p-0.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition-colors"
-              >
-                <Pencil size={10} className="text-slate-400 dark:text-slate-500" />
-              </button>
+              {!isAdvanced && (
+                <>
+                  <button
+                    onClick={() => openAdvanceModal(bill)}
+                    title="Adiantar pagamento para próximo mês"
+                    className="p-0.5 hover:bg-violet-100 dark:hover:bg-violet-800/40 rounded transition-colors"
+                  >
+                    <ChevronsRight size={10} className="text-violet-400 dark:text-violet-500" />
+                  </button>
+                  <button
+                    onClick={() => openEdit(bill)}
+                    title="Editar valor deste mês"
+                    className="p-0.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition-colors"
+                  >
+                    <Pencil size={10} className="text-slate-400 dark:text-slate-500" />
+                  </button>
+                </>
+              )}
             </div>
-            {status === "overdue" && !payment?.paid && dueInfo && (
+            {status === "overdue" && !payment?.paid && !isAdvanced && dueInfo && (
               <span className="text-xs text-red-500 font-medium">{dueInfo.label}</span>
             )}
-            {status === "overdue" && !payment?.paid && !dueInfo && (
+            {status === "overdue" && !payment?.paid && !isAdvanced && !dueInfo && (
               <span className="text-xs text-red-500 font-medium">Vencida!</span>
             )}
           </div>
-          <Toggle checked={payment?.paid ?? false} onChange={v => handleToggleBill(bill, v)} />
+          <Toggle
+            checked={isAdvanced || (payment?.paid ?? false)}
+            onChange={v => !isAdvanced && handleToggleBill(bill, v)}
+            disabled={isAdvanced}
+          />
         </div>
       </div>
     );
@@ -506,7 +618,12 @@ export default function GastosMensaisPage() {
   }) {
     const isQ1     = label.startsWith("1");
     const accent   = isQ1 ? "primary" : "amber";
-    const billsSum = bills.reduce((s, b) => s + billAmount(b), 0);
+    const period   = isQ1 ? "1-15" : "16-30";
+    const billsSum = bills.reduce((s, b) => s + billEffectiveAmount(b), 0);
+    // Adiantamentos feitos neste mês para este período
+    const periodAdvances = advancesMadeThisMonth.filter(
+      adv => (fixedBills.find(b => b.id === adv.bill_id)?.period ?? "16-30") === period
+    );
     const cardsSum = cards.reduce((s, c) => s + (cardTotals[c.id] ?? 0), 0);
 
     // Agrupamento dinâmico por categoria (suporta categorias customizadas)
@@ -574,14 +691,17 @@ export default function GastosMensaisPage() {
                   );
                 })}
                 {(() => {
-                  const paidBills   = bills.filter(b => billPayments.find(p => p.bill_id === b.id)?.paid);
-                  const paidSum     = paidBills.reduce((s, b) => s + billAmount(b), 0);
-                  const remaining   = billsSum - paidSum;
+                  const advancedInThis = bills.filter(b => advancedBillIds.has(b.id));
+                  const paidNormally   = bills.filter(b => !advancedBillIds.has(b.id) && billPayments.find(p => p.bill_id === b.id)?.paid);
+                  const paidSum        = paidNormally.reduce((s, b) => s + billAmount(b), 0);
+                  const advancedSum    = advancedInThis.reduce((s, b) => s + billAmount(b), 0);
+                  const remaining      = billsSum - paidSum;
+                  const totalPaid      = paidNormally.length + advancedInThis.length;
                   return (
                     <div className="pt-2 border-t border-slate-100 dark:border-slate-700/50 space-y-1.5">
                       <div className="flex justify-between items-center">
                         <span className="text-xs text-slate-500 dark:text-slate-400">
-                          {paidBills.length}/{bills.length} pagas
+                          {totalPaid}/{bills.length} pagas
                         </span>
                         <span className="text-sm font-bold text-slate-700 dark:text-slate-200">
                           {formatCurrency(billsSum)}
@@ -590,6 +710,7 @@ export default function GastosMensaisPage() {
                       <div className="flex justify-between text-xs font-medium">
                         <span className="text-emerald-600 dark:text-emerald-400">
                           ✓ Pago {formatCurrency(paidSum)}
+                          {advancedSum > 0 && <span className="text-violet-500 ml-1">+ Adiantado {formatCurrency(advancedSum)}</span>}
                         </span>
                         <span className={remaining > 0 ? "text-red-500 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"}>
                           {remaining > 0 ? `Falta ${formatCurrency(remaining)}` : "Tudo pago ✓"}
@@ -598,6 +719,45 @@ export default function GastosMensaisPage() {
                     </div>
                   );
                 })()}
+
+                {/* Adiantamentos feitos neste mês para meses futuros */}
+                {periodAdvances.length > 0 && (
+                  <div className="pt-2 border-t border-violet-200 dark:border-violet-800/30">
+                    <p className="text-xs font-semibold text-violet-600 dark:text-violet-400 uppercase tracking-wide flex items-center gap-1.5 mb-1.5">
+                      <ChevronsRight size={12} />
+                      Adiantamentos — {formatCurrency(periodAdvances.reduce((s, a) => s + a.amount, 0))}
+                    </p>
+                    <div className="space-y-1.5">
+                      {periodAdvances.map(adv => {
+                        const bill = fixedBills.find(b => b.id === adv.bill_id);
+                        return (
+                          <div key={adv.id} className="flex items-center justify-between gap-2 rounded-lg px-3 py-2 bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800/30">
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs font-medium text-violet-700 dark:text-violet-300 truncate">
+                                {bill?.name ?? "Conta"}
+                              </p>
+                              <p className="text-xs text-violet-500 dark:text-violet-400">
+                                Para {MONTHS[adv.target_month - 1]}/{adv.target_year}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <span className="text-sm font-semibold text-violet-700 dark:text-violet-300">
+                                -{formatCurrency(adv.amount)}
+                              </span>
+                              <button
+                                onClick={() => removeAdvance(adv.id)}
+                                title="Remover adiantamento"
+                                className="p-0.5 hover:bg-violet-100 dark:hover:bg-violet-800/40 rounded transition-colors"
+                              >
+                                <X size={11} className="text-violet-400" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -725,7 +885,7 @@ export default function GastosMensaisPage() {
 
   function SpreadsheetView() {
     const accBalance = prevBalance + balance;
-    const saldoMeio = prevBalance + incomeTotal - q1Total;
+    const saldoMeio = prevBalance + q1Income - q1Total;
 
     const allItems: { name: string; amount: number; dueDay: number | null; paid: boolean; type: "bill" | "card"; installment?: string; id: string; period: string }[] = [];
 
@@ -836,10 +996,10 @@ export default function GastosMensaisPage() {
           </div>
         )}
 
-        {/* Saldo dia 30 (receita + saldo anterior) */}
+        {/* Saldo dia 1 (receita 1ª quinzena + saldo anterior) */}
         <div className="flex items-center justify-between px-3 py-2 bg-blue-50/50 dark:bg-blue-900/10 border-b border-blue-100 dark:border-blue-800/30">
-          <span className="text-xs font-bold text-blue-700 dark:text-blue-400">Saldo dia 30 (disponivel)</span>
-          <span className="text-sm font-bold text-blue-600 tabular-nums">{formatCurrency(prevBalance + incomeTotal)}</span>
+          <span className="text-xs font-bold text-blue-700 dark:text-blue-400">Saldo dia 1 (disponível)</span>
+          <span className="text-sm font-bold text-blue-600 tabular-nums">{formatCurrency(prevBalance + q1Income)}</span>
         </div>
 
         {/* Contas 1-15 */}
@@ -879,6 +1039,14 @@ export default function GastosMensaisPage() {
             {formatCurrency(saldoMeio)}
           </span>
         </div>
+
+        {/* Receitas 2ª quinzena (entre saldo dia 15 e contas 16-30) */}
+        {q2Income > 0 && (
+          <div className="flex items-center justify-between px-3 py-2 bg-emerald-50 dark:bg-emerald-900/20 border-b border-emerald-200 dark:border-emerald-800/30">
+            <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400 uppercase">Receitas 2ª Quinzena</span>
+            <span className="text-sm font-bold text-emerald-600 tabular-nums">+{formatCurrency(q2Income)}</span>
+          </div>
+        )}
 
         {/* Contas 16-30 */}
         <div className="border-b-2 border-amber-200 dark:border-amber-800/40">
@@ -937,7 +1105,8 @@ export default function GastosMensaisPage() {
 
   function FluxoCaixa() {
     const accBalance = prevBalance + balance;
-    const saldoMeio  = prevBalance + incomeTotal - q1Total;
+    // Saldo após a 1ª quinzena: saldo anterior + receitas da 1ª quinzena - despesas da 1ª quinzena
+    const saldoMeio  = prevBalance + q1Income - q1Total;
 
     function FlowRow({ label, value, muted }: { label: string; value: number; muted?: boolean }) {
       const pos = value >= 0;
@@ -984,13 +1153,14 @@ export default function GastosMensaisPage() {
 
         <div className="divide-y divide-slate-100 dark:divide-slate-700/50">
           {prevBalance !== 0 && <FlowRow label="Saldo anterior" value={prevBalance} muted />}
-          <FlowRow label="Receitas" value={incomeTotal} />
+          {q1Income > 0 && <FlowRow label="Receitas 1ª Quinzena" value={q1Income} />}
           <FlowRow label="1ª Quinzena (dias 1–15)" value={-q1Total} />
         </div>
 
         <Mid label="Pós 1ª quinzena" value={saldoMeio} />
 
         <div className="divide-y divide-slate-100 dark:divide-slate-700/50">
+          {q2Income > 0 && <FlowRow label="Receitas 2ª Quinzena" value={q2Income} />}
           <FlowRow label="2ª Quinzena (dias 16–30)" value={-q2Total} />
         </div>
 
@@ -1244,6 +1414,78 @@ export default function GastosMensaisPage() {
               </button>
               <button onClick={saveEdit} className="btn-primary flex-1">
                 Salvar
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Modal: adiantar pagamento */}
+      {advanceModal && (
+        <Modal
+          open
+          onClose={() => setAdvanceModal(null)}
+          title={`Adiantar — ${advanceModal.bill.name}`}
+          size="sm"
+        >
+          <div className="space-y-4">
+            <div className="bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800/30 rounded-lg p-3">
+              <p className="text-xs text-violet-700 dark:text-violet-300 font-medium mb-1 flex items-center gap-1.5">
+                <ChevronsRight size={12} /> Como funciona o adiantamento?
+              </p>
+              <p className="text-xs text-violet-600 dark:text-violet-400">
+                O valor será debitado do mês atual e a parcela do mês selecionado ficará marcada como pré-paga, sem impactar o saldo daquele mês.
+              </p>
+            </div>
+
+            <div>
+              <label className="label">Adiantar para qual mês?</label>
+              <div className="grid grid-cols-2 gap-2">
+                <select
+                  className="input"
+                  value={advanceModal.targetMonth}
+                  onChange={e => setAdvanceModal(p => p && { ...p, targetMonth: Number(e.target.value) })}
+                >
+                  {MONTHS.map((name, i) => (
+                    <option key={i} value={i + 1}>{name}</option>
+                  ))}
+                </select>
+                <input
+                  className="input" type="number" min="2024" max="2099"
+                  value={advanceModal.targetYear}
+                  onChange={e => setAdvanceModal(p => p && { ...p, targetYear: Number(e.target.value) })}
+                />
+              </div>
+              <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+                Mês atual: {MONTHS[month - 1]}/{year}
+              </p>
+            </div>
+
+            <div>
+              <label className="label">Valor (R$)</label>
+              <input
+                className="input" type="number" step="0.01" autoFocus
+                value={advanceModal.amount}
+                onChange={e => setAdvanceModal(p => p && { ...p, amount: e.target.value })}
+              />
+            </div>
+
+            <div>
+              <label className="label">Observação (opcional)</label>
+              <input
+                className="input"
+                placeholder="Ex: Adiantei 2 meses, Pagamento extra..."
+                value={advanceModal.notes}
+                onChange={e => setAdvanceModal(p => p && { ...p, notes: e.target.value })}
+              />
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button onClick={() => setAdvanceModal(null)} className="btn-secondary flex-1">
+                Cancelar
+              </button>
+              <button onClick={saveAdvance} className="btn-primary flex-1">
+                Confirmar Adiantamento
               </button>
             </div>
           </div>

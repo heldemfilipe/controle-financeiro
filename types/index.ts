@@ -118,6 +118,21 @@ export interface MonthlyIncome {
   income_sources?: IncomeSource;
 }
 
+export interface BillAdvance {
+  id: string;
+  bill_id: string;
+  /** Mês/ano da parcela sendo adiantada */
+  target_month: number;
+  target_year: number;
+  /** Mês/ano em que o adiantamento foi feito */
+  paid_month: number;
+  paid_year: number;
+  amount: number;
+  notes: string | null;
+  created_at: string;
+  fixed_bills?: FixedBill;
+}
+
 export interface MonthlyBalanceOverride {
   id: string;
   month: number;

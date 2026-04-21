@@ -1,10 +1,12 @@
 import {
   getMonthlyIncomes, getMonthlyBillPayments, getCardTransactions,
   getFixedBills, getIncomeSources, getBalanceOverrides,
+  getBillAdvancesMadeIn, getBillAdvancesForMonth,
+  getBillAdvancesMadeInYear, getBillAdvancesForYear,
 } from "./queries";
 import { computeInstallment, getAccConfig } from "./utils";
 import type { AccumuladoConfig } from "./utils";
-import type { FixedBill, IncomeSource, MonthlyBalanceOverride } from "@/types";
+import type { FixedBill, IncomeSource, MonthlyBalanceOverride, BillAdvance } from "@/types";
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 
@@ -48,19 +50,28 @@ export async function computeMonthBalance(
   preloaded?: {
     allBills?: FixedBill[];
     allSources?: IncomeSource[];
+    /** Adiantamentos feitos NESTE mês (já filtrados por mês) */
+    advancesMade?: BillAdvance[];
+    /** Adiantamentos PARA este mês (já filtrados por mês) */
+    advancesFor?: BillAdvance[];
   },
 ): Promise<MonthBalanceData> {
   const key = cacheKey(month, year);
   const cached = cache.get(key);
   if (cached) return cached;
 
-  const [incomes, billPayments, txs, allBills, allSources] = await Promise.all([
+  const [incomes, billPayments, txs, allBills, allSources, rawAdvancesMade, rawAdvancesFor] = await Promise.all([
     getMonthlyIncomes(month, year),
     getMonthlyBillPayments(month, year),
     getCardTransactions(month, year),
     preloaded?.allBills ? Promise.resolve(preloaded.allBills) : getFixedBills(),
     preloaded?.allSources ? Promise.resolve(preloaded.allSources) : getIncomeSources(),
+    preloaded?.advancesMade ? Promise.resolve(preloaded.advancesMade) : getBillAdvancesMadeIn(month, year),
+    preloaded?.advancesFor ? Promise.resolve(preloaded.advancesFor) : getBillAdvancesForMonth(month, year),
   ]);
+
+  const advancesMade = rawAdvancesMade;
+  const advancedBillIds = new Set(rawAdvancesFor.map(a => a.bill_id));
 
   // Receita
   const sourcesForMonth = allSources.filter(s =>
@@ -93,9 +104,19 @@ export async function computeMonthBalance(
     .filter(b => visibleBills.some(vb => vb.id === b.bill_id))
     .forEach(b => {
       const bill = visibleBills.find(vb => vb.id === b.bill_id);
-      addBillCat(b.amount ?? bill?.amount ?? 0, bill?.category ?? "outros");
+      const effectiveAmount = advancedBillIds.has(b.bill_id) ? 0 : (b.amount ?? bill?.amount ?? 0);
+      addBillCat(effectiveAmount, bill?.category ?? "outros");
     });
-  missingBills.forEach(b => addBillCat(b.amount, b.category));
+  missingBills.forEach(b => {
+    const effectiveAmount = advancedBillIds.has(b.id) ? 0 : b.amount;
+    addBillCat(effectiveAmount, b.category);
+  });
+
+  // Adiantamentos feitos neste mês (pagamentos antecipados de contas futuras)
+  advancesMade.forEach(a => {
+    const bill = allBills.find(b => b.id === a.bill_id);
+    addBillCat(a.amount, bill?.category ?? "outros");
+  });
 
   // Dízimo
   const tithePayment = titheBill ? billPayments.find(b => b.bill_id === titheBill.id) : null;
@@ -132,10 +153,12 @@ export async function computeYearBalances(
 ): Promise<MonthAccumulated[]> {
   const cfg = accConfig ?? getAccConfig();
 
-  const [allBills, allSources, overrides] = await Promise.all([
+  const [allBills, allSources, overrides, yearAdvancesMade, yearAdvancesFor] = await Promise.all([
     getFixedBills(),
     getIncomeSources(),
     getBalanceOverrides(year),
+    getBillAdvancesMadeInYear(year),
+    getBillAdvancesForYear(year),
   ]);
 
   const overrideMap = new Map<number, MonthlyBalanceOverride>();
@@ -165,9 +188,14 @@ export async function computeYearBalances(
 
   // Calcula cada mês do ano
   const monthsData = await Promise.all(
-    Array.from({ length: 12 }, (_, i) =>
-      computeMonthBalance(i + 1, year, { allBills, allSources })
-    )
+    Array.from({ length: 12 }, (_, i) => {
+      const m = i + 1;
+      return computeMonthBalance(m, year, {
+        allBills, allSources,
+        advancesMade: yearAdvancesMade.filter(a => a.paid_month === m),
+        advancesFor: yearAdvancesFor.filter(a => a.target_month === m),
+      });
+    })
   );
 
   let running = yearStartBalance;

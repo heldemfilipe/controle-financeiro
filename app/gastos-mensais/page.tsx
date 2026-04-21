@@ -885,6 +885,10 @@ export default function GastosMensaisPage() {
 
   function SpreadsheetView() {
     const accBalance = prevBalance + balance;
+    const overrideValue = balanceOverride
+      ? (balanceOverride.auto_zero ? 0 : balanceOverride.override_amount)
+      : null;
+    const displayBalance = overrideValue !== null ? overrideValue : accBalance;
     const saldoMeio = prevBalance + q1Income - q1Total;
 
     const allItems: { name: string; amount: number; dueDay: number | null; paid: boolean; type: "bill" | "card"; installment?: string; id: string; period: string }[] = [];
@@ -1076,21 +1080,28 @@ export default function GastosMensaisPage() {
 
         {/* Saldo final */}
         <div className={`flex items-center justify-between px-3 py-3 ${
-          accBalance >= 0
+          displayBalance >= 0
             ? "bg-emerald-50 dark:bg-emerald-900/20"
             : "bg-red-50 dark:bg-red-900/20"
         }`}>
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-bold text-slate-700 dark:text-slate-200">Saldo Final</span>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-bold text-slate-700 dark:text-slate-200">Saldo Final</span>
+              {balanceOverride && (
+                <span className="text-xs px-1.5 py-0.5 rounded-full bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400 font-medium">
+                  {balanceOverride.auto_zero ? "Zerado" : "Ajustado"}
+                </span>
+              )}
+            </div>
             {balanceOverride && (
-              <span className="text-xs px-1.5 py-0.5 rounded-full bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400 font-medium">
-                {balanceOverride.auto_zero ? "Zerado" : "Ajustado"}
+              <span className="text-xs text-slate-400 dark:text-slate-500">
+                Calculado: {accBalance >= 0 ? "+" : ""}{formatCurrency(accBalance)}
               </span>
             )}
           </div>
           <div className="flex items-center gap-2">
-            <span className={`text-base font-bold tabular-nums ${accBalance >= 0 ? "text-emerald-600" : "text-red-500"}`}>
-              {formatCurrency(accBalance)}
+            <span className={`text-base font-bold tabular-nums ${displayBalance >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+              {formatCurrency(displayBalance)}
             </span>
             <button onClick={openOverrideModal} title="Ajustar saldo" className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition-colors">
               <Sliders size={12} className="text-violet-500" />
@@ -1105,6 +1116,10 @@ export default function GastosMensaisPage() {
 
   function FluxoCaixa() {
     const accBalance = prevBalance + balance;
+    const overrideValue = balanceOverride
+      ? (balanceOverride.auto_zero ? 0 : balanceOverride.override_amount)
+      : null;
+    const displayBalance = overrideValue !== null ? overrideValue : accBalance;
     // Saldo após a 1ª quinzena: saldo anterior + receitas da 1ª quinzena - despesas da 1ª quinzena
     const saldoMeio  = prevBalance + q1Income - q1Total;
 
@@ -1166,7 +1181,7 @@ export default function GastosMensaisPage() {
 
         {/* Saldo final */}
         <div className={`flex items-center justify-between px-3 py-2.5 rounded-xl mt-3 border ${
-          accBalance >= 0
+          displayBalance >= 0
             ? "bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800/30"
             : "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800/30"
         }`}>
@@ -1179,7 +1194,11 @@ export default function GastosMensaisPage() {
                 </span>
               )}
             </div>
-            {prevBalance !== 0 && (
+            {balanceOverride ? (
+              <p className="text-xs text-slate-400 dark:text-slate-500">
+                Calculado: {accBalance >= 0 ? "+" : ""}{formatCurrency(accBalance)}
+              </p>
+            ) : prevBalance !== 0 && (
               <p className="text-xs text-slate-400 dark:text-slate-500">
                 Mês: {balance >= 0 ? "+" : ""}{formatCurrency(balance)}
               </p>
@@ -1189,8 +1208,8 @@ export default function GastosMensaisPage() {
             )}
           </div>
           <div className="flex items-center gap-2">
-            <span className={`text-base font-bold ${accBalance >= 0 ? "text-emerald-600" : "text-red-500"}`}>
-              {accBalance >= 0 ? "+" : ""}{formatCurrency(accBalance)}
+            <span className={`text-base font-bold ${displayBalance >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+              {displayBalance >= 0 ? "+" : ""}{formatCurrency(displayBalance)}
             </span>
             <button
               onClick={openOverrideModal}

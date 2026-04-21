@@ -529,6 +529,26 @@ export async function deleteBillAdvance(id: string): Promise<void> {
   if (error) throw error;
 }
 
+/** Retorna todos os adiantamentos FEITOS em um determinado ano */
+export async function getBillAdvancesMadeInYear(year: number): Promise<BillAdvance[]> {
+  const { data, error } = await supabase
+    .from("bill_advances")
+    .select("*, fixed_bills(*)")
+    .eq("paid_year", year);
+  if (error) throw error;
+  return (data ?? []) as BillAdvance[];
+}
+
+/** Retorna todos os adiantamentos PARA um determinado ano */
+export async function getBillAdvancesForYear(year: number): Promise<BillAdvance[]> {
+  const { data, error } = await supabase
+    .from("bill_advances")
+    .select("*, fixed_bills(*)")
+    .eq("target_year", year);
+  if (error) throw error;
+  return (data ?? []) as BillAdvance[];
+}
+
 /** Todas as transações de cartão de um ano (query única para análise anual) */
 export async function getCardTransactionsByYear(year: number): Promise<CardTransaction[]> {
   const { data, error } = await supabase

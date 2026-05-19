@@ -6,11 +6,12 @@ import { MonthSelector } from "@/components/ui/MonthSelector";
 import {
   getFixedBills, getCategories, getCardTransactions,
   getMonthlyBillPayments, getMonthlyIncomes, getIncomeSources,
+  getCreditCards,
 } from "@/lib/queries";
 import { computePrevBalance } from "@/lib/balance";
 import type { MonthlyBillPayment, CardTransaction } from "@/types";
 import { formatCurrency, getCurrentMonth, getMonthName, filterRegularBills, getAccConfig, computeInstallment } from "@/lib/utils";
-import type { Category, FixedBill } from "@/types";
+import type { Category, FixedBill, CreditCard as CreditCardType } from "@/types";
 
 const FALLBACK_COLORS = [
   "#6366f1", "#f59e0b", "#10b981", "#ef4444", "#8b5cf6",
@@ -21,14 +22,41 @@ function colorOf(cats: Category[], name: string, idx: number): string {
   return cats.find(c => c.name === name)?.color ?? FALLBACK_COLORS[idx % FALLBACK_COLORS.length];
 }
 
-function groupCardByCat(txs: CardTransaction[]): Record<string, number> {
-  const map: Record<string, number> = {};
+interface CardDetail {
+  id: string;
+  name: string;
+  color: string;
+  amount: number;
+}
+
+interface CardCatData {
+  total: number;
+  byCard: CardDetail[];
+}
+
+function groupCardByCat(txs: CardTransaction[], cards: CreditCardType[]): Record<string, CardCatData> {
+  const byCardByCat: Record<string, Record<string, number>> = {};
+
   txs.forEach(tx => {
     const key = tx.category ?? "Sem categoria";
-    map[key] = (map[key] ?? 0) - tx.amount;
+    if (!byCardByCat[key]) byCardByCat[key] = {};
+    byCardByCat[key][tx.card_id] = (byCardByCat[key][tx.card_id] ?? 0) - tx.amount;
   });
-  Object.keys(map).forEach(k => { if (map[k] <= 0) delete map[k]; });
-  return map;
+
+  const result: Record<string, CardCatData> = {};
+  Object.entries(byCardByCat).forEach(([cat, cardMap]) => {
+    const byCard: CardDetail[] = Object.entries(cardMap)
+      .filter(([, v]) => v > 0)
+      .map(([cardId, amount]) => {
+        const card = cards.find(c => c.id === cardId);
+        return { id: cardId, name: card?.name ?? "Cartão", color: card?.color ?? "#6366f1", amount };
+      })
+      .sort((a, b) => b.amount - a.amount);
+    const total = byCard.reduce((s, c) => s + c.amount, 0);
+    if (total > 0) result[cat] = { total, byCard };
+  });
+
+  return result;
 }
 
 export default function AnalisePage() {
@@ -38,11 +66,12 @@ export default function AnalisePage() {
   const [loading, setLoading] = useState(true);
 
   const [categories,     setCategories]    = useState<Category[]>([]);
+  const [creditCards,    setCreditCards]   = useState<CreditCardType[]>([]);
   const [fixedBills,     setFixedBills]     = useState<FixedBill[]>([]);
   const [titheBill,      setTitheBill]      = useState<FixedBill | null>(null);
   const [titheAmount,    setTitheAmount]    = useState(0);
   const [monthlyBillAmt, setMonthlyBillAmt] = useState<Record<string, number>>({});
-  const [cardByCat,      setCardByCat]      = useState<Record<string, number>>({});
+  const [cardByCat,      setCardByCat]      = useState<Record<string, CardCatData>>({});
   const [incomeTotal,    setIncomeTotal]    = useState(0);
   const [prevBalance,    setPrevBalance]    = useState(0);
 
@@ -51,16 +80,18 @@ export default function AnalisePage() {
   async function loadData() {
     setLoading(true);
     try {
-      const [cats, bills, payments, txs, sources, incomes] = await Promise.all([
+      const [cats, bills, payments, txs, sources, incomes, cards] = await Promise.all([
         getCategories(),
         getFixedBills(),
         getMonthlyBillPayments(month, year),
         getCardTransactions(month, year),
         getIncomeSources(month, year),
         getMonthlyIncomes(month, year),
+        getCreditCards(),
       ]);
 
       setCategories(cats);
+      setCreditCards(cards);
       const tithe = bills.find(b => b.is_tithe) ?? null;
       const regular = filterRegularBills(bills);
       setFixedBills(regular);
@@ -72,7 +103,7 @@ export default function AnalisePage() {
         billAmts[b.id] = p?.amount ?? b.amount;
       });
       setMonthlyBillAmt(billAmts);
-      setCardByCat(groupCardByCat(txs));
+      setCardByCat(groupCardByCat(txs, cards));
 
       const inc = sources.reduce((s, src) => {
         const mi = incomes.find(i => i.source_id === src.id);
@@ -80,7 +111,6 @@ export default function AnalisePage() {
       }, 0);
       setIncomeTotal(inc);
 
-      // Dízimo: usa valor do pagamento ou 10% da renda
       if (tithe) {
         const tithePayment = payments.find(p => p.bill_id === tithe.id);
         setTitheAmount(tithePayment?.amount ?? inc * 0.1);
@@ -88,7 +118,6 @@ export default function AnalisePage() {
         setTitheAmount(0);
       }
 
-      // Saldo acumulado anterior (usa módulo centralizado com suporte a overrides)
       const prev = await computePrevBalance(month, year);
       setPrevBalance(prev);
     } finally {
@@ -109,13 +138,12 @@ export default function AnalisePage() {
     const cat = b.category || "outros";
     categoryMap[cat] = (categoryMap[cat] ?? 0) + (monthlyBillAmt[b.id] ?? b.amount);
   });
-  // Inclui dízimo na categoria correspondente
   if (titheBill && titheAmount > 0) {
     const titheCat = titheBill.category || "essencial";
     categoryMap[titheCat] = (categoryMap[titheCat] ?? 0) + titheAmount;
   }
-  Object.entries(cardByCat).forEach(([cat, amount]) => {
-    categoryMap[cat] = (categoryMap[cat] ?? 0) + amount;
+  Object.entries(cardByCat).forEach(([cat, { total }]) => {
+    categoryMap[cat] = (categoryMap[cat] ?? 0) + total;
   });
 
   const catList = Object.entries(categoryMap)
@@ -129,7 +157,7 @@ export default function AnalisePage() {
     .sort((a, b) => b.value - a.value);
 
   const totalExpenses = catList.reduce((s, d) => s + d.value, 0);
-  const cardTotal     = Object.values(cardByCat).reduce((s, v) => s + v, 0);
+  const cardTotal     = Object.values(cardByCat).reduce((s, v) => s + v.total, 0);
   const monthBalance  = incomeTotal - totalExpenses;
   const accBalance    = prevBalance + monthBalance;
 
@@ -189,7 +217,7 @@ export default function AnalisePage() {
                 {catList.map(entry => {
                   const pct = totalExpenses > 0 ? (entry.value / totalExpenses) * 100 : 0;
                   const bills = visibleFixedBills.filter(b => (b.category || "outros") === entry.rawName);
-                  const cardAmt = cardByCat[entry.rawName];
+                  const cardData = cardByCat[entry.rawName];
                   return (
                     <div key={entry.rawName}>
                       {/* Nome + valor */}
@@ -214,19 +242,21 @@ export default function AnalisePage() {
                           style={{ width: `${pct}%`, backgroundColor: entry.color }} />
                       </div>
 
-                      {/* Itens compactos */}
-                      {(bills.length > 0 || cardAmt) && (
+                      {/* Itens compactos: contas + cartões por nome */}
+                      {(bills.length > 0 || cardData) && (
                         <div className="flex flex-wrap gap-x-3 gap-y-0.5 pl-5">
                           {bills.map(b => (
                             <span key={b.id} className="text-xs text-slate-400 dark:text-slate-500">
                               {b.name} {formatCurrency(monthlyBillAmt[b.id] ?? b.amount)}
                             </span>
                           ))}
-                          {cardAmt && (
-                            <span className="text-xs text-slate-400 dark:text-slate-500">
-                              Cartão {formatCurrency(cardAmt)}
+                          {cardData && cardData.byCard.map(c => (
+                            <span key={c.id} className="text-xs font-medium flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ backgroundColor: c.color }} />
+                              <span style={{ color: c.color }}>{c.name}</span>
+                              <span className="text-slate-400 dark:text-slate-500">{formatCurrency(c.amount)}</span>
                             </span>
-                          )}
+                          ))}
                         </div>
                       )}
                     </div>

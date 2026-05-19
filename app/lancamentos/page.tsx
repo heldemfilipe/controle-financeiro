@@ -746,8 +746,8 @@ export default function LancamentosPage() {
             <div>
               <label className="label">Valor (R$)</label>
               <input className="input" type="number" step="0.01" placeholder="0,00"
-                value={editIncome.base_amount ?? ""}
-                onChange={e => setEditIncome(p => ({ ...p, base_amount: Number(e.target.value) }))} />
+                value={editIncome.base_amount || ""}
+                onChange={e => setEditIncome(p => ({ ...p, base_amount: parseFloat(e.target.value) || 0 }))} />
             </div>
             <div>
               <label className="label">Dia de Recebimento</label>
@@ -846,8 +846,8 @@ export default function LancamentosPage() {
             <div>
               <label className="label">Valor da Parcela (R$)</label>
               <input className="input" type="number" step="0.01" placeholder="0,00"
-                value={editBill.amount ?? ""}
-                onChange={e => setEditBill(p => ({ ...p, amount: Number(e.target.value) }))} />
+                value={editBill.amount || ""}
+                onChange={e => setEditBill(p => ({ ...p, amount: parseFloat(e.target.value) || 0 }))} />
             </div>
             <div>
               <label className="label">Dia de Vencimento</label>
@@ -1077,8 +1077,8 @@ export default function LancamentosPage() {
                 {(editTx.installment_total ?? 1) > 1 ? "Valor da Parcela (R$)" : "Valor (R$)"}
               </label>
               <input className="input" type="number" step="0.01" placeholder="0,00"
-                value={editTx.amount ?? ""}
-                onChange={e => setEditTx(p => ({ ...p, amount: Number(e.target.value) }))} />
+                value={editTx.amount || ""}
+                onChange={e => setEditTx(p => ({ ...p, amount: parseFloat(e.target.value) || 0 }))} />
             </div>
             {/* Parcelas — só para novo */}
             {!editTx.id && (

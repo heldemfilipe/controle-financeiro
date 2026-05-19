@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import {
   LayoutDashboard, PlusCircle, CalendarDays, CreditCard,
   TrendingUp, DollarSign, BarChart2, AreaChart, Settings,
-  Sun, Moon, PieChart, LogOut, User, Tag, FlaskConical,
+  Sun, Moon, PieChart, LogOut, User, Tag, FlaskConical, Lightbulb,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/components/providers/ThemeProvider";
@@ -34,6 +34,7 @@ const navGroups = [
       { href: "/analise", label: "Por Categoria", icon: PieChart },
       { href: "/gastos-cartoes", label: "Gastos Cartões", icon: BarChart2 },
       { href: "/simulador", label: "Simulador", icon: FlaskConical },
+      { href: "/dicas", label: "Dicas do Mês", icon: Lightbulb },
     ],
   },
   {

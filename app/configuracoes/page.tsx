@@ -331,13 +331,10 @@ export default function ConfiguracoesPage() {
     showSaved();
   }
 
-  // Contas recorrentes permanentes: sem limite de parcelas
-  const recurringBills = bills.filter(b => !b.installment_total);
-
   const tabs: { key: Tab; label: string; icon: any; count: number; adminOnly?: boolean }[] = [
     { key: "renda", label: "Fontes de Renda", icon: TrendingUp, count: sources.filter(s => s.is_recurring !== false).length },
     { key: "cartoes", label: "Cartões de Crédito", icon: CreditCard, count: cards.length },
-    { key: "contas", label: "Contas Fixas", icon: FileText, count: recurringBills.filter(b => b.active).length },
+    { key: "contas", label: "Contas Fixas", icon: FileText, count: bills.filter(b => b.active).length },
     { key: "integrantes", label: "Integrantes", icon: UserPlus, count: owners.length },
     { key: "usuarios", label: "Usuários", icon: Users, count: users.length, adminOnly: true },
   ];
@@ -346,7 +343,7 @@ export default function ConfiguracoesPage() {
 
   const billGroups = (() => {
     const map: Record<string, { label: string; order: number; bills: FixedBill[] }> = {};
-    recurringBills.forEach(b => {
+    bills.forEach(b => {
       const cat = b.category || "outros";
       const period = b.period ?? "sem-periodo";
       const key = `${cat}|${period}`;
@@ -367,7 +364,7 @@ export default function ConfiguracoesPage() {
       .filter(g => g.bills.length > 0);
   })();
 
-  const totalMonthlyBills = recurringBills.filter(b => b.active).reduce((s, b) => s + b.amount, 0);
+  const totalMonthlyBills = bills.filter(b => b.active).reduce((s, b) => s + b.amount, 0);
   const totalMonthlyIncome = sources.filter(s => s.is_recurring !== false).reduce((s, s2) => s + s2.base_amount, 0);
 
   return (
@@ -390,7 +387,7 @@ export default function ConfiguracoesPage() {
         <div className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/50 rounded-xl p-3 text-center transition-colors">
           <p className="text-xs text-slate-500 dark:text-slate-400 mb-0.5">Contas Fixas/mês</p>
           <p className="text-lg font-bold text-red-700 dark:text-red-400">{formatCurrency(totalMonthlyBills)}</p>
-          <p className="text-xs text-slate-400 dark:text-slate-500">{recurringBills.filter(b => b.active).length} ativa{recurringBills.filter(b => b.active).length !== 1 ? "s" : ""}</p>
+          <p className="text-xs text-slate-400 dark:text-slate-500">{bills.filter(b => b.active).length} ativa{bills.filter(b => b.active).length !== 1 ? "s" : ""}</p>
         </div>
         <div className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/50 rounded-xl p-3 text-center transition-colors">
           <p className="text-xs text-slate-500 dark:text-slate-400 mb-0.5">Cartões Cadastrados</p>
@@ -677,7 +674,7 @@ export default function ConfiguracoesPage() {
               </div>
             ))}
 
-            {recurringBills.length === 0 && (
+            {bills.length === 0 && (
               <div className="bg-white dark:bg-slate-800 border-2 border-dashed border-slate-200 dark:border-slate-600 rounded-xl p-8 text-center transition-colors">
                 <FileText size={28} className="text-slate-300 dark:text-slate-600 mx-auto mb-2" />
                 <p className="text-slate-500 dark:text-slate-400 text-sm mb-3">Nenhuma conta cadastrada</p>
@@ -687,7 +684,7 @@ export default function ConfiguracoesPage() {
             )}
           </div>
 
-          {recurringBills.length > 0 && (
+          {bills.length > 0 && (
             <div className="mt-4 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800/30 rounded-xl p-3 flex justify-between transition-colors">
               <span className="text-sm font-semibold text-red-700 dark:text-red-400">Total Mensal (contas ativas)</span>
               <span className="text-lg font-bold text-red-700 dark:text-red-400">{formatCurrency(totalMonthlyBills)}</span>

@@ -179,7 +179,6 @@ export default function AnalisePage() {
   visibleFixedBills.forEach(b => {
     if (advancedBillIds.has(b.id)) return;
     const amt = monthlyBillAmt[b.id] ?? b.amount;
-    if (amt === 0) return; // excluído para este mês (deletado/zerado em Gastos do Mês)
     const cat = b.category || "outros";
     categoryMap[cat] = (categoryMap[cat] ?? 0) + amt;
   });

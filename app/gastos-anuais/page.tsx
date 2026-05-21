@@ -44,15 +44,13 @@ export default function GastosAnuaisPage() {
       const yearData = await computeYearBalances(year);
 
       const EMPRESTIMO_CATS = new Set(["emprestimo", "financiamento", "empréstimo", "financiamentos"]);
+      const isEmprestimo = (k: string) => EMPRESTIMO_CATS.has((k ?? "").toLowerCase());
+      const isEssencial  = (k: string) => (k ?? "").toLowerCase() === "essencial";
 
       const months: MonthData[] = yearData.map((md, i) => {
-        const essenciais = md.billsByCategory["essencial"] ?? 0;
-        const emprestimos = Object.entries(md.billsByCategory)
-          .filter(([k]) => EMPRESTIMO_CATS.has(k))
-          .reduce((s, [, v]) => s + v, 0);
-        const outros = Object.entries(md.billsByCategory)
-          .filter(([k]) => k !== "essencial" && !EMPRESTIMO_CATS.has(k))
-          .reduce((s, [, v]) => s + v, 0);
+        const essenciais  = Object.entries(md.billsByCategory).filter(([k]) => isEssencial(k)).reduce((s, [, v]) => s + v, 0);
+        const emprestimos = Object.entries(md.billsByCategory).filter(([k]) => isEmprestimo(k)).reduce((s, [, v]) => s + v, 0);
+        const outros      = Object.entries(md.billsByCategory).filter(([k]) => !isEssencial(k) && !isEmprestimo(k)).reduce((s, [, v]) => s + v, 0);
         const cartoes = md.totalCards;
         const despesas = md.totalBills + cartoes;
 

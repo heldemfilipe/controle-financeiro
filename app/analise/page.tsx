@@ -177,9 +177,11 @@ export default function AnalisePage() {
 
   const categoryMap: Record<string, number> = {};
   visibleFixedBills.forEach(b => {
-    if (advancedBillIds.has(b.id)) return; // já paga antecipadamente — não conta neste mês
+    if (advancedBillIds.has(b.id)) return;
+    const amt = monthlyBillAmt[b.id] ?? b.amount;
+    if (amt === 0) return; // excluído para este mês (deletado/zerado em Gastos do Mês)
     const cat = b.category || "outros";
-    categoryMap[cat] = (categoryMap[cat] ?? 0) + (monthlyBillAmt[b.id] ?? b.amount);
+    categoryMap[cat] = (categoryMap[cat] ?? 0) + amt;
   });
   if (titheBill && titheAmount > 0) {
     const titheCat = titheBill.category || "essencial";
@@ -259,7 +261,11 @@ export default function AnalisePage() {
               <div className="space-y-4">
                 {catList.map(entry => {
                   const pct = totalExpenses > 0 ? (entry.value / totalExpenses) * 100 : 0;
-                  const bills = visibleFixedBills.filter(b => (b.category || "outros") === entry.rawName && !advancedBillIds.has(b.id));
+                  const bills = visibleFixedBills.filter(b =>
+                    (b.category || "outros") === entry.rawName &&
+                    !advancedBillIds.has(b.id) &&
+                    (monthlyBillAmt[b.id] ?? b.amount) > 0
+                  );
                   const cardData = cardByCat[entry.rawName];
                   const prevVal = prevCatMap[entry.rawName];
                   const delta = prevVal != null ? entry.value - prevVal : null;

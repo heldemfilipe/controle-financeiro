@@ -288,9 +288,9 @@ export default function ConfiguracoesPage() {
   }
 
   const tabs: { key: Tab; label: string; icon: any; count: number; adminOnly?: boolean }[] = [
-    { key: "renda", label: "Fontes de Renda", icon: TrendingUp, count: sources.length },
+    { key: "renda", label: "Fontes de Renda", icon: TrendingUp, count: sources.filter(s => s.is_recurring !== false).length },
     { key: "cartoes", label: "Cartões de Crédito", icon: CreditCard, count: cards.length },
-    { key: "contas", label: "Contas Fixas", icon: FileText, count: bills.length },
+    { key: "contas", label: "Contas Fixas", icon: FileText, count: bills.filter(b => b.active).length },
     { key: "integrantes", label: "Integrantes", icon: UserPlus, count: owners.length },
     { key: "usuarios", label: "Usuários", icon: Users, count: users.length, adminOnly: true },
   ];
@@ -306,7 +306,7 @@ export default function ConfiguracoesPage() {
   ].filter(g => g.bills.length > 0);
 
   const totalMonthlyBills = bills.filter(b => b.active).reduce((s, b) => s + b.amount, 0);
-  const totalMonthlyIncome = sources.reduce((s, s2) => s + s2.base_amount, 0);
+  const totalMonthlyIncome = sources.filter(s => s.is_recurring !== false).reduce((s, s2) => s + s2.base_amount, 0);
 
   return (
     <div className="p-4 md:p-6 min-h-screen">
@@ -323,7 +323,7 @@ export default function ConfiguracoesPage() {
         <div className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/50 rounded-xl p-3 text-center transition-colors">
           <p className="text-xs text-slate-500 dark:text-slate-400 mb-0.5">Renda Mensal Base</p>
           <p className="text-lg font-bold text-emerald-700 dark:text-emerald-400">{formatCurrency(totalMonthlyIncome)}</p>
-          <p className="text-xs text-slate-400 dark:text-slate-500">{sources.length} fonte{sources.length !== 1 ? "s" : ""}</p>
+          <p className="text-xs text-slate-400 dark:text-slate-500">{sources.filter(s => s.is_recurring !== false).length} fonte{sources.filter(s => s.is_recurring !== false).length !== 1 ? "s" : ""} recorrente{sources.filter(s => s.is_recurring !== false).length !== 1 ? "s" : ""}</p>
         </div>
         <div className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/50 rounded-xl p-3 text-center transition-colors">
           <p className="text-xs text-slate-500 dark:text-slate-400 mb-0.5">Contas Fixas/mês</p>

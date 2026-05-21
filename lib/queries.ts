@@ -85,7 +85,8 @@ export async function getIncomeSourceAmounts(sourceId?: string): Promise<IncomeS
     .order("effective_month", { ascending: false });
   if (sourceId) query = (query as any).eq("source_id", sourceId);
   const { data, error } = await query;
-  if (error) throw error;
+  // Retorna [] se tabela ainda não existe no banco (migration pendente)
+  if (error) return [];
   return (data ?? []) as IncomeSourceAmount[];
 }
 

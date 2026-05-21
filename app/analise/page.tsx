@@ -8,7 +8,7 @@ import {
   getMonthlyBillPayments, getMonthlyIncomes, getIncomeSources,
   getCreditCards, getBillAdvancesForMonth,
 } from "@/lib/queries";
-import { computePrevBalance } from "@/lib/balance";
+import { computePrevBalance, clearBalanceCache } from "@/lib/balance";
 import type { MonthlyBillPayment, CardTransaction, BillAdvance } from "@/types";
 import { formatCurrency, getCurrentMonth, getMonthName, filterRegularBills, getAccConfig, computeInstallment } from "@/lib/utils";
 import type { Category, FixedBill, CreditCard as CreditCardType } from "@/types";
@@ -81,6 +81,7 @@ export default function AnalisePage() {
 
   async function loadData() {
     setLoading(true);
+    clearBalanceCache();
     const pm = month === 1 ? 12 : month - 1;
     const py = month === 1 ? year - 1 : year;
     try {

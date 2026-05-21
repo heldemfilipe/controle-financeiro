@@ -297,13 +297,28 @@ export default function ConfiguracoesPage() {
 
   const visibleTabs = tabs.filter(t => !t.adminOnly || isAdmin);
 
-  const billGroups = [
-    { key: "essencial-1-15", label: "Essenciais 1–15", bills: bills.filter(b => b.category === "essencial" && b.period === "1-15") },
-    { key: "outros-1-15", label: "Outros 1–15", bills: bills.filter(b => b.category === "outros" && b.period === "1-15") },
-    { key: "essencial-16-30", label: "Essenciais 16–30", bills: bills.filter(b => b.category === "essencial" && b.period === "16-30") },
-    { key: "outros-16-30", label: "Outros 16–30", bills: bills.filter(b => b.category === "outros" && b.period === "16-30") },
-    { key: "sem-periodo", label: "Sem Período", bills: bills.filter(b => !b.period) },
-  ].filter(g => g.bills.length > 0);
+  const billGroups = (() => {
+    const map: Record<string, { label: string; order: number; bills: FixedBill[] }> = {};
+    bills.forEach(b => {
+      const cat = b.category || "outros";
+      const period = b.period ?? "sem-periodo";
+      const key = `${cat}|${period}`;
+      if (!map[key]) {
+        const catLabel = cat.charAt(0).toUpperCase() + cat.slice(1);
+        const periodLabel = period === "1-15" ? " 1–15" : period === "16-30" ? " 16–30" : "";
+        map[key] = {
+          label: `${catLabel}${periodLabel}`,
+          order: period === "1-15" ? 0 : period === "16-30" ? 1 : 2,
+          bills: [],
+        };
+      }
+      map[key].bills.push(b);
+    });
+    return Object.entries(map)
+      .map(([key, { label, order, bills }]) => ({ key, label, order, bills }))
+      .sort((a, b) => a.order - b.order || a.label.localeCompare(b.label, "pt-BR"))
+      .filter(g => g.bills.length > 0);
+  })();
 
   const totalMonthlyBills = bills.filter(b => b.active).reduce((s, b) => s + b.amount, 0);
   const totalMonthlyIncome = sources.filter(s => s.is_recurring !== false).reduce((s, s2) => s + s2.base_amount, 0);
@@ -377,7 +392,7 @@ export default function ConfiguracoesPage() {
           </div>
 
           <div className="space-y-2">
-            {sources.map((src) => (
+            {sources.filter(s => s.is_recurring !== false).map((src) => (
               <div key={src.id}
                 className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/50 rounded-xl p-4 flex items-center justify-between hover:border-slate-200 dark:hover:border-slate-600 transition-colors">
                 <div className="flex items-center gap-3 min-w-0">
@@ -427,7 +442,7 @@ export default function ConfiguracoesPage() {
               </div>
             ))}
 
-            {sources.length === 0 && (
+            {sources.filter(s => s.is_recurring !== false).length === 0 && (
               <div className="bg-white dark:bg-slate-800 border-2 border-dashed border-slate-200 dark:border-slate-600 rounded-xl p-8 text-center transition-colors">
                 <Banknote size={28} className="text-slate-300 dark:text-slate-600 mx-auto mb-2" />
                 <p className="text-slate-500 dark:text-slate-400 text-sm mb-3">Nenhuma fonte de renda cadastrada</p>
@@ -437,7 +452,7 @@ export default function ConfiguracoesPage() {
             )}
           </div>
 
-          {sources.length > 0 && (
+          {sources.filter(s => s.is_recurring !== false).length > 0 && (
             <div className="mt-4 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800/30 rounded-xl p-3 flex justify-between transition-colors">
               <span className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">Renda Mensal Total</span>
               <span className="text-lg font-bold text-emerald-700 dark:text-emerald-400">{formatCurrency(totalMonthlyIncome)}</span>

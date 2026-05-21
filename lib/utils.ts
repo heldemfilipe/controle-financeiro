@@ -1,5 +1,5 @@
 import { MONTHS } from "@/types";
-import type { FixedBill, CardTransaction } from "@/types";
+import type { FixedBill, CardTransaction, IncomeSource, IncomeSourceAmount } from "@/types";
 
 /** Soma o valor líquido das transações (despesas negativas − créditos positivos). */
 export function sumTransactions(txs: CardTransaction[]): number {
@@ -167,6 +167,30 @@ export function installmentEndDate(
     month: (totalMonthsIndex % 12) + 1,
     year: Math.floor(totalMonthsIndex / 12),
   };
+}
+
+/**
+ * Resolve o valor efetivo de uma fonte de renda para um dado mês/ano.
+ * Busca o registro mais recente em `amounts` com data de vigência ≤ mês/ano.
+ * Fallback: `source.base_amount`.
+ */
+export function resolveSourceAmount(
+  source: IncomeSource,
+  month: number,
+  year: number,
+  amounts: IncomeSourceAmount[],
+): number {
+  const best = amounts
+    .filter(a => a.source_id === source.id)
+    .filter(a =>
+      a.effective_year < year ||
+      (a.effective_year === year && a.effective_month <= month)
+    )
+    .sort((a, b) => {
+      if (a.effective_year !== b.effective_year) return b.effective_year - a.effective_year;
+      return b.effective_month - a.effective_month;
+    })[0];
+  return best?.amount ?? source.base_amount;
 }
 
 // ── Configuração do saldo acumulado ──────────────────────────────────────────

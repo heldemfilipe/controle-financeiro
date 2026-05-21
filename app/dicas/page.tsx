@@ -10,11 +10,12 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { MonthSelector } from "@/components/ui/MonthSelector";
 import {
   getIncomeSources, getMonthlyIncomes, getFixedBills, getMonthlyBillPayments,
-  getCardTransactions, getCreditCards, getCategories,
+  getCardTransactions, getCreditCards, getCategories, getBillAdvancesForMonth,
+  getIncomeSourceAmounts,
 } from "@/lib/queries";
 import {
   formatCurrency, getCurrentMonth, getMonthName,
-  filterRegularBills, computeInstallment,
+  filterRegularBills, computeInstallment, resolveSourceAmount,
 } from "@/lib/utils";
 import type {
   FixedBill, MonthlyBillPayment,
@@ -41,6 +42,7 @@ function generateTips(params: {
   cardTotal: number;
   visibleBills: FixedBill[];
   billPayments: MonthlyBillPayment[];
+  advancedBillIds: Set<string>;
   cardTxs: CardTransaction[];
   creditCards: CreditCardType[];
   categories: Category[];
@@ -49,7 +51,7 @@ function generateTips(params: {
 }): Tip[] {
   const {
     incomeTotal, totalBills, cardTotal, visibleBills,
-    billPayments, cardTxs, creditCards, month, year,
+    billPayments, advancedBillIds, cardTxs, creditCards, month, year,
   } = params;
 
   const tips: Tip[] = [];
@@ -166,6 +168,7 @@ function generateTips(params: {
   if (isCurrentMonth) {
     const upcomingBills = visibleBills.filter(b => {
       if (!b.due_day) return false;
+      if (advancedBillIds.has(b.id)) return false;
       const paid = billPayments.find(p => p.bill_id === b.id && p.paid);
       if (paid) return false;
       return b.due_day >= today && b.due_day <= today + 5;
@@ -182,6 +185,7 @@ function generateTips(params: {
 
     const overdueBills = visibleBills.filter(b => {
       if (!b.due_day) return false;
+      if (advancedBillIds.has(b.id)) return false;
       const paid = billPayments.find(p => p.bill_id === b.id && p.paid);
       if (paid) return false;
       return b.due_day < today;
@@ -275,7 +279,7 @@ export default function DicasPage() {
   async function loadData() {
     setLoading(true);
     try {
-      const [sources, incomes, bills, payments, txs, cards, cats] = await Promise.all([
+      const [sources, incomes, bills, payments, txs, cards, cats, advances, srcAmts] = await Promise.all([
         getIncomeSources(month, year),
         getMonthlyIncomes(month, year),
         getFixedBills(),
@@ -283,11 +287,14 @@ export default function DicasPage() {
         getCardTransactions(month, year),
         getCreditCards(),
         getCategories(),
+        getBillAdvancesForMonth(month, year),
+        getIncomeSourceAmounts(),
       ]);
+      const advancedBillIds = new Set(advances.map(a => a.bill_id));
 
       const inc = sources.reduce((s, src) => {
         const mi = incomes.find(i => i.source_id === src.id);
-        return s + (mi?.amount ?? src.base_amount);
+        return s + (mi?.amount ?? resolveSourceAmount(src, month, year, srcAmts));
       }, 0);
 
       const regularBills = filterRegularBills(bills);
@@ -313,6 +320,7 @@ export default function DicasPage() {
       const overdue = isCurrentMonth
         ? visibleBills.filter(b => {
             if (!b.due_day || b.due_day >= today) return false;
+            if (advancedBillIds.has(b.id)) return false;
             const paid = payments.find(p => p.bill_id === b.id && p.paid);
             return !paid;
           }).length
@@ -328,6 +336,7 @@ export default function DicasPage() {
         cardTotal: cardAmt,
         visibleBills,
         billPayments: payments,
+        advancedBillIds,
         cardTxs: txs,
         creditCards: cards,
         categories: cats,

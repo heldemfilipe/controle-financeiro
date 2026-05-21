@@ -16,14 +16,14 @@ import {
   deleteCardTransactionsFollowing, updateCategoryForFollowing, updateAmountForFollowing,
   insertCardTransactions,
   getMonthlyIncomes, upsertMonthlyIncome, toggleIncomeReceived,
-  getTransactionSuggestions, upsertMonthlyBillPayment,
+  getTransactionSuggestions, upsertMonthlyBillPayment, getIncomeSourceAmounts,
 } from "@/lib/queries";
 import { DescriptionAutocomplete, type TxSuggestion } from "@/components/ui/DescriptionAutocomplete";
 import { MONTHS } from "@/types";
-import { formatCurrency, getCurrentMonth, installmentEndDate, computeInstallment } from "@/lib/utils";
+import { formatCurrency, getCurrentMonth, installmentEndDate, computeInstallment, resolveSourceAmount } from "@/lib/utils";
 import { getOwners, type Owner } from "@/lib/owners";
 import type {
-  IncomeSource, FixedBill, CreditCard as CreditCardType,
+  IncomeSource, IncomeSourceAmount, FixedBill, CreditCard as CreditCardType,
   CardTransaction, MonthlyIncome, Category,
 } from "@/types";
 
@@ -36,6 +36,7 @@ export default function LancamentosPage() {
   const [tab, setTab] = useState<Tab>("receitas");
 
   const [incomeSources, setIncomeSources] = useState<IncomeSource[]>([]);
+  const [sourceAmounts, setSourceAmounts] = useState<IncomeSourceAmount[]>([]);
   const [fixedBills,    setFixedBills]    = useState<FixedBill[]>([]);
   const [creditCards,   setCreditCards]   = useState<CreditCardType[]>([]);
   const [cardTxs,       setCardTxs]       = useState<CardTransaction[]>([]);
@@ -76,13 +77,14 @@ export default function LancamentosPage() {
   }, []);
 
   async function loadAll() {
-    const [srcs, bills, cats, cards, txs, incomes] = await Promise.all([
+    const [srcs, bills, cats, cards, txs, incomes, srcAmts] = await Promise.all([
       getIncomeSources(month, year),
       getFixedBills(),
       getCategories(),
       getCreditCards(),
       getCardTransactions(month, year),
       getMonthlyIncomes(month, year),
+      getIncomeSourceAmounts(),
     ]);
     setIncomeSources(srcs);
     setFixedBills(bills);
@@ -90,6 +92,7 @@ export default function LancamentosPage() {
     setCreditCards(cards);
     setCardTxs(txs);
     setMonthlyIncomes(incomes);
+    setSourceAmounts(srcAmts);
   }
 
   // ── Income ──────────────────────────────────────────────────────────────────
@@ -126,7 +129,7 @@ export default function LancamentosPage() {
 
   async function toggleIncome(src: IncomeSource, received: boolean) {
     const mi = monthlyIncomes.find(m => m.source_id === src.id);
-    await toggleIncomeReceived(src.id, month, year, received, mi?.amount ?? src.base_amount);
+    await toggleIncomeReceived(src.id, month, year, received, mi?.amount ?? resolveSourceAmount(src, month, year, sourceAmounts));
     await loadAll();
   }
 
@@ -420,7 +423,7 @@ export default function LancamentosPage() {
                       </div>
                       <div className="flex items-center gap-3">
                         <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">
-                          {formatCurrency(mi?.amount ?? src.base_amount)}
+                          {formatCurrency(mi?.amount ?? resolveSourceAmount(src, month, year, sourceAmounts))}
                         </p>
                         <div className="flex gap-1">
                           <button
@@ -450,7 +453,7 @@ export default function LancamentosPage() {
             <span className="text-lg font-bold text-emerald-700 dark:text-emerald-400">
               {formatCurrency(incomeSources.reduce((s, src) => {
                 const mi = monthlyIncomes.find(m => m.source_id === src.id);
-                return s + (mi?.amount ?? src.base_amount);
+                return s + (mi?.amount ?? resolveSourceAmount(src, month, year, sourceAmounts));
               }, 0))}
             </span>
           </div>

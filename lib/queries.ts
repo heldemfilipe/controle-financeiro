@@ -1,6 +1,6 @@
 import { supabase } from "./supabase";
 import type {
-  IncomeSource, FixedBill, CreditCard, CardTransaction, Category,
+  IncomeSource, IncomeSourceAmount, FixedBill, CreditCard, CardTransaction, Category,
   MonthlyBillPayment, MonthlyCardPayment, MonthlyIncome, MonthlyBalanceOverride, BillAdvance,
 } from "@/types";
 
@@ -71,6 +71,38 @@ export async function deleteIncomeSource(id: string) {
   const { error } = await supabase
     .from("income_sources")
     .update({ active: false })
+    .eq("id", id);
+  if (error) throw error;
+}
+
+// ─── Income Source Amounts (histórico de valores por data de vigência) ─────────
+
+export async function getIncomeSourceAmounts(sourceId?: string): Promise<IncomeSourceAmount[]> {
+  let query = supabase
+    .from("income_source_amounts")
+    .select("*")
+    .order("effective_year", { ascending: false })
+    .order("effective_month", { ascending: false });
+  if (sourceId) query = (query as any).eq("source_id", sourceId);
+  const { data, error } = await query;
+  if (error) throw error;
+  return (data ?? []) as IncomeSourceAmount[];
+}
+
+export async function upsertIncomeSourceAmount(entry: Partial<IncomeSourceAmount>): Promise<IncomeSourceAmount> {
+  const { data, error } = await supabase
+    .from("income_source_amounts")
+    .upsert(entry, { onConflict: "source_id,effective_month,effective_year" })
+    .select()
+    .single();
+  if (error) throw error;
+  return data as IncomeSourceAmount;
+}
+
+export async function deleteIncomeSourceAmount(id: string): Promise<void> {
+  const { error } = await supabase
+    .from("income_source_amounts")
+    .delete()
     .eq("id", id);
   if (error) throw error;
 }

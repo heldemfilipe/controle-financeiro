@@ -10,18 +10,18 @@ import { useToast } from "@/components/ui/Toast";
 import {
   getFixedBills, getMonthlyBillPayments, toggleBillPaid, updateBillPaymentAmount,
   getCreditCards, getCardTransactions, getMonthlyCardPayments, toggleCardPaid,
-  getMonthlyIncomes, getIncomeSources,
+  getMonthlyIncomes, getIncomeSources, getIncomeSourceAmounts,
   getBalanceOverride, upsertBalanceOverride, deleteBalanceOverride,
   getBillAdvancesMadeIn, getBillAdvancesForMonth, createBillAdvance, deleteBillAdvance,
 } from "@/lib/queries";
-import { formatCurrency, getCurrentMonth, getMonthName, isOverdue, isDueSoon, getDueInfo, computeInstallment, getAccConfig, saveAccConfig } from "@/lib/utils";
+import { formatCurrency, getCurrentMonth, getMonthName, isOverdue, isDueSoon, getDueInfo, computeInstallment, getAccConfig, saveAccConfig, resolveSourceAmount } from "@/lib/utils";
 import type { DueInfo } from "@/lib/utils";
 import type { AccumuladoConfig } from "@/lib/utils";
 import { computePrevBalance, clearBalanceCache } from "@/lib/balance";
 import { MONTHS } from "@/types";
 import type {
   FixedBill, CreditCard as CCType, MonthlyBillPayment,
-  MonthlyCardPayment, IncomeSource, MonthlyIncome, CardTransaction, MonthlyBalanceOverride, BillAdvance,
+  MonthlyCardPayment, IncomeSource, IncomeSourceAmount, MonthlyIncome, CardTransaction, MonthlyBalanceOverride, BillAdvance,
 } from "@/types";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -29,14 +29,17 @@ import type {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Calcula 10% da renda agrupado dinamicamente por owner (sem nomes fixos) */
-function calcTithe(sources: IncomeSource[], incomes: MonthlyIncome[]) {
+function calcTithe(
+  sources: IncomeSource[], incomes: MonthlyIncome[],
+  month: number, year: number, srcAmts: IncomeSourceAmount[],
+) {
   const owners = Array.from(new Set(sources.map(s => s.owner)));
   const byOwner: Record<string, { base: number; tithe: number }> = {};
 
   owners.forEach(owner => {
     const base = sources
       .filter(s => s.owner === owner)
-      .reduce((acc, s) => acc + (incomes.find(i => i.source_id === s.id)?.amount ?? s.base_amount), 0);
+      .reduce((acc, s) => acc + (incomes.find(i => i.source_id === s.id)?.amount ?? resolveSourceAmount(s, month, year, srcAmts)), 0);
     byOwner[owner] = { base, tithe: base * 0.1 };
   });
 
@@ -77,6 +80,7 @@ export default function GastosMensaisPage() {
   const [cardTransactions, setCardTransactions] = useState<CardTransaction[]>([]);
   const [incomeSources,    setIncomeSources]    = useState<IncomeSource[]>([]);
   const [monthlyIncomes,   setMonthlyIncomes]   = useState<MonthlyIncome[]>([]);
+  const [sourceAmounts,    setSourceAmounts]    = useState<IncomeSourceAmount[]>([]);
   const [expandedCard,     setExpandedCard]     = useState<string | null>(null);
   const [prevBalance,      setPrevBalance]      = useState(0);
 
@@ -119,7 +123,7 @@ export default function GastosMensaisPage() {
       clearBalanceCache();
       const [
         bills, payments, cards, cardPays, txs, sources, incomes, override,
-        advMade, advFor,
+        advMade, advFor, srcAmts,
       ] = await Promise.all([
         getFixedBills(),
         getMonthlyBillPayments(month, year),
@@ -131,7 +135,9 @@ export default function GastosMensaisPage() {
         getBalanceOverride(month, year),
         getBillAdvancesMadeIn(month, year),
         getBillAdvancesForMonth(month, year),
+        getIncomeSourceAmounts(),
       ]);
+      setSourceAmounts(srcAmts);
       setBalanceOverride(override);
       setAdvancesMadeThisMonth(advMade);
       setAdvancesForThisMonth(advFor);
@@ -162,7 +168,7 @@ export default function GastosMensaisPage() {
 
   // ── Valores derivados ──────────────────────────────────────────────────────
 
-  const tithe       = calcTithe(incomeSources, monthlyIncomes);
+  const tithe       = calcTithe(incomeSources, monthlyIncomes, month, year, sourceAmounts);
   const titheBill   = fixedBills.find(b => b.is_tithe);
   const regularBills = fixedBills.filter(b => !b.is_tithe);
 
@@ -175,14 +181,14 @@ export default function GastosMensaisPage() {
 
   const incomeTotal = incomeSources.reduce((s, src) => {
     const mi = monthlyIncomes.find(i => i.source_id === src.id);
-    return s + (mi?.amount ?? src.base_amount);
+    return s + (mi?.amount ?? resolveSourceAmount(src, month, year, sourceAmounts));
   }, 0);
 
   // Receita dividida por quinzena (baseada no due_day da fonte de renda)
   const q1Income = incomeSources.reduce((s, src) => {
     if ((src.due_day ?? 99) > 15) return s;
     const mi = monthlyIncomes.find(i => i.source_id === src.id);
-    return s + (mi?.amount ?? src.base_amount);
+    return s + (mi?.amount ?? resolveSourceAmount(src, month, year, sourceAmounts));
   }, 0);
   const q2Income = incomeTotal - q1Income;
 
@@ -980,7 +986,7 @@ export default function GastosMensaisPage() {
           </div>
           {incomeSources.map(src => {
             const mi = monthlyIncomes.find(i => i.source_id === src.id);
-            const amt = mi?.amount ?? src.base_amount;
+            const amt = mi?.amount ?? resolveSourceAmount(src, month, year, sourceAmounts);
             return (
               <div key={src.id} className="flex items-center justify-between py-1">
                 <span className="text-xs text-emerald-600 dark:text-emerald-400">{src.name}</span>

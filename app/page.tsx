@@ -16,10 +16,10 @@ import { ChartTooltip } from "@/components/ui/ChartTooltip";
 import {
   getMonthlyIncomes, getMonthlyBillPayments,
   getCardTransactions, getFixedBills, getCreditCards,
-  getMonthlyCardPayments, getIncomeSources, getCategories,
+  getMonthlyCardPayments, getIncomeSources, getCategories, getIncomeSourceAmounts,
 } from "@/lib/queries";
 import { computeYearBalances, clearBalanceCache } from "@/lib/balance";
-import { formatCurrency, getMonthName, getCurrentMonth, computeInstallment } from "@/lib/utils";
+import { formatCurrency, getMonthName, getCurrentMonth, computeInstallment, resolveSourceAmount } from "@/lib/utils";
 import { MONTH_SHORT } from "@/types";
 import type { Category } from "@/types";
 
@@ -55,7 +55,7 @@ export default function DashboardPage() {
   async function loadData() {
     setLoading(true);
     try {
-      const [incomes, bills, txs, allBills, cards, cardPayments, incomeSrcs, cats] = await Promise.all([
+      const [incomes, bills, txs, allBills, cards, cardPayments, incomeSrcs, cats, srcAmts] = await Promise.all([
         getMonthlyIncomes(month, year),
         getMonthlyBillPayments(month, year),
         getCardTransactions(month, year),
@@ -64,6 +64,7 @@ export default function DashboardPage() {
         getMonthlyCardPayments(month, year),
         getIncomeSources(),
         getCategories(),
+        getIncomeSourceAmounts(),
       ]);
 
       // ── Receita do mês ────────────────────────────────────────────────────────
@@ -72,7 +73,7 @@ export default function DashboardPage() {
         if (src.is_recurring === false) {
           if (src.one_time_month !== month || src.one_time_year !== year) return s;
         }
-        return s + (mi?.amount ?? src.base_amount);
+        return s + (mi?.amount ?? resolveSourceAmount(src, month, year, srcAmts));
       }, 0);
 
       // ── Filtra contas ─────────────────────────────────────────────────────────
@@ -153,7 +154,7 @@ export default function DashboardPage() {
           if (src.is_recurring === false) {
             if (src.one_time_month !== m || src.one_time_year !== year) return s;
           }
-          return s + (mi?.amount ?? src.base_amount);
+          return s + (mi?.amount ?? resolveSourceAmount(src, m, year, srcAmts));
         }, 0);
 
         const visible2 = regularAllBills.filter(bill => {

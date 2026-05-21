@@ -3,10 +3,11 @@ import {
   getFixedBills, getIncomeSources, getBalanceOverrides,
   getBillAdvancesMadeIn, getBillAdvancesForMonth,
   getBillAdvancesMadeInYear, getBillAdvancesForYear,
+  getIncomeSourceAmounts,
 } from "./queries";
-import { computeInstallment, getAccConfig } from "./utils";
+import { computeInstallment, getAccConfig, resolveSourceAmount } from "./utils";
 import type { AccumuladoConfig } from "./utils";
-import type { FixedBill, IncomeSource, MonthlyBalanceOverride, BillAdvance } from "@/types";
+import type { FixedBill, IncomeSource, IncomeSourceAmount, MonthlyBalanceOverride, BillAdvance } from "@/types";
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 
@@ -50,6 +51,7 @@ export async function computeMonthBalance(
   preloaded?: {
     allBills?: FixedBill[];
     allSources?: IncomeSource[];
+    allSourceAmounts?: IncomeSourceAmount[];
     /** Adiantamentos feitos NESTE mês (já filtrados por mês) */
     advancesMade?: BillAdvance[];
     /** Adiantamentos PARA este mês (já filtrados por mês) */
@@ -60,12 +62,13 @@ export async function computeMonthBalance(
   const cached = cache.get(key);
   if (cached) return cached;
 
-  const [incomes, billPayments, txs, allBills, allSources, rawAdvancesMade, rawAdvancesFor] = await Promise.all([
+  const [incomes, billPayments, txs, allBills, allSources, allSourceAmounts, rawAdvancesMade, rawAdvancesFor] = await Promise.all([
     getMonthlyIncomes(month, year),
     getMonthlyBillPayments(month, year),
     getCardTransactions(month, year),
     preloaded?.allBills ? Promise.resolve(preloaded.allBills) : getFixedBills(),
     preloaded?.allSources ? Promise.resolve(preloaded.allSources) : getIncomeSources(),
+    preloaded?.allSourceAmounts ? Promise.resolve(preloaded.allSourceAmounts) : getIncomeSourceAmounts(),
     preloaded?.advancesMade ? Promise.resolve(preloaded.advancesMade) : getBillAdvancesMadeIn(month, year),
     preloaded?.advancesFor ? Promise.resolve(preloaded.advancesFor) : getBillAdvancesForMonth(month, year),
   ]);
@@ -80,7 +83,7 @@ export async function computeMonthBalance(
   );
   const totalIncome = sourcesForMonth.reduce((s, src) => {
     const mi = incomes.find(i => i.source_id === src.id);
-    return s + (mi?.amount ?? src.base_amount);
+    return s + (mi?.amount ?? resolveSourceAmount(src, month, year, allSourceAmounts));
   }, 0);
 
   // Contas fixas
@@ -153,9 +156,10 @@ export async function computeYearBalances(
 ): Promise<MonthAccumulated[]> {
   const cfg = accConfig ?? getAccConfig();
 
-  const [allBills, allSources, overrides, yearAdvancesMade, yearAdvancesFor] = await Promise.all([
+  const [allBills, allSources, allSourceAmounts, overrides, yearAdvancesMade, yearAdvancesFor] = await Promise.all([
     getFixedBills(),
     getIncomeSources(),
+    getIncomeSourceAmounts(),
     getBalanceOverrides(year),
     getBillAdvancesMadeInYear(year),
     getBillAdvancesForYear(year),
@@ -175,7 +179,7 @@ export async function computeYearBalances(
       prevOverrides.forEach(o => prevOverrideMap.set(o.month, o));
 
       for (let m = startM; m <= 12; m++) {
-        const md = await computeMonthBalance(m, y, { allBills, allSources });
+        const md = await computeMonthBalance(m, y, { allBills, allSources, allSourceAmounts });
         yearStartBalance += md.balance;
 
         const ov = prevOverrideMap.get(m);
@@ -191,7 +195,7 @@ export async function computeYearBalances(
     Array.from({ length: 12 }, (_, i) => {
       const m = i + 1;
       return computeMonthBalance(m, year, {
-        allBills, allSources,
+        allBills, allSources, allSourceAmounts,
         advancesMade: yearAdvancesMade.filter(a => a.paid_month === m),
         advancesFor: yearAdvancesFor.filter(a => a.target_month === m),
       });

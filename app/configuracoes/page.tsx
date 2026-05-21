@@ -5,7 +5,7 @@ import {
   TrendingUp, CreditCard, FileText, Plus, Pencil, Trash2,
   Save, AlertCircle, Check, User, Banknote, Users,
   ShieldCheck, ShieldX, RotateCcw, Eye, EyeOff, Lock,
-  UserPlus,
+  UserPlus, History,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Modal } from "@/components/ui/Modal";
@@ -14,11 +14,12 @@ import {
   getIncomeSources, upsertIncomeSource, deleteIncomeSource,
   getCreditCards, upsertCreditCard,
   getFixedBills, upsertFixedBill, deleteFixedBill,
+  getIncomeSourceAmounts, upsertIncomeSourceAmount, deleteIncomeSourceAmount,
 } from "@/lib/queries";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, getMonthName } from "@/lib/utils";
 import { createSupabaseBrowser } from "@/lib/supabase-browser";
 import { getOwners, saveOwners, slugify, DEFAULT_OWNERS, type Owner } from "@/lib/owners";
-import type { IncomeSource, CreditCard as CreditCardType, FixedBill, AppUser } from "@/types";
+import type { IncomeSource, IncomeSourceAmount, CreditCard as CreditCardType, FixedBill, AppUser } from "@/types";
 
 type Tab = "renda" | "cartoes" | "contas" | "integrantes" | "usuarios";
 
@@ -40,6 +41,13 @@ export default function ConfiguracoesPage() {
   const [editBill, setEditBill] = useState<Partial<FixedBill>>({});
 
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: string; id: string; name: string } | null>(null);
+
+  // ── Histórico de valores de receita ─────────────────────────────────────────
+  const [historyModal, setHistoryModal] = useState<IncomeSource | null>(null);
+  const [historyAmounts, setHistoryAmounts] = useState<IncomeSourceAmount[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [newAmount, setNewAmount] = useState({ month: new Date().getMonth() + 1, year: new Date().getFullYear(), amount: "", notes: "" });
+  const [historySaving, setHistorySaving] = useState(false);
 
   // ── Integrantes ─────────────────────────────────────────────────────────────
   const [owners, setOwners] = useState<Owner[]>([]);
@@ -120,6 +128,42 @@ export default function ConfiguracoesPage() {
     await deleteIncomeSource(id);
     setDeleteConfirm(null);
     await loadAll(); showSaved();
+  }
+
+  async function openHistory(src: IncomeSource) {
+    setHistoryModal(src);
+    setHistoryLoading(true);
+    setNewAmount({ month: new Date().getMonth() + 1, year: new Date().getFullYear(), amount: "", notes: "" });
+    const amts = await getIncomeSourceAmounts(src.id);
+    setHistoryAmounts(amts);
+    setHistoryLoading(false);
+  }
+
+  async function saveHistoryEntry() {
+    if (!historyModal || !newAmount.amount) return;
+    setHistorySaving(true);
+    try {
+      await upsertIncomeSourceAmount({
+        source_id: historyModal.id,
+        effective_month: newAmount.month,
+        effective_year: newAmount.year,
+        amount: parseFloat(newAmount.amount),
+        notes: newAmount.notes || null,
+      });
+      const amts = await getIncomeSourceAmounts(historyModal.id);
+      setHistoryAmounts(amts);
+      setNewAmount(p => ({ ...p, amount: "", notes: "" }));
+    } finally {
+      setHistorySaving(false);
+    }
+  }
+
+  async function removeHistoryEntry(id: string) {
+    await deleteIncomeSourceAmount(id);
+    if (historyModal) {
+      const amts = await getIncomeSourceAmounts(historyModal.id);
+      setHistoryAmounts(amts);
+    }
   }
 
   async function saveCard() {
@@ -428,6 +472,11 @@ export default function ConfiguracoesPage() {
                 <div className="flex items-center gap-3 shrink-0">
                   <p className="text-lg font-bold text-emerald-700 dark:text-emerald-400">{formatCurrency(src.base_amount)}</p>
                   <div className="flex gap-1">
+                    <button onClick={() => openHistory(src)}
+                      title="Histórico de valores"
+                      className="p-2 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-lg transition-colors">
+                      <History size={14} className="text-amber-500" />
+                    </button>
                     <button onClick={() => { setEditSource(src); setSourceModal(true); }}
                       className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
                       <Pencil size={14} className="text-slate-400 dark:text-slate-500" />
@@ -1263,6 +1312,95 @@ export default function ConfiguracoesPage() {
               }`}>
               {banConfirm?.banned ? <ShieldCheck size={14} /> : <ShieldX size={14} />}
               {banConfirm?.banned ? "Ativar" : "Desativar"}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* ── MODAL: Histórico de Valores da Receita ── */}
+      <Modal open={!!historyModal} onClose={() => setHistoryModal(null)}
+        title={`Histórico — ${historyModal?.name ?? ""}`} size="lg">
+        <div className="space-y-4">
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Registre mudanças de valor (aumento ou redução) com a data de início. O sistema usará
+            o valor mais recente cadastrado para cada mês.
+            Valor base: <span className="font-semibold text-slate-700 dark:text-slate-200">{historyModal ? formatCurrency(historyModal.base_amount) : ""}</span>
+          </p>
+
+          {/* Lista de entradas existentes */}
+          {historyLoading ? (
+            <div className="flex justify-center py-4">
+              <div className="w-5 h-5 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
+            </div>
+          ) : historyAmounts.length === 0 ? (
+            <p className="text-xs text-slate-400 dark:text-slate-500 text-center py-2">
+              Nenhuma alteração registrada. O valor base é sempre usado.
+            </p>
+          ) : (
+            <div className="space-y-1.5">
+              {historyAmounts.map(a => (
+                <div key={a.id}
+                  className="flex items-center justify-between bg-slate-50 dark:bg-slate-700/40 rounded-lg px-3 py-2">
+                  <div>
+                    <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                      {formatCurrency(a.amount)}
+                    </span>
+                    <span className="text-xs text-slate-400 dark:text-slate-500 ml-2">
+                      a partir de {getMonthName(a.effective_month)}/{a.effective_year}
+                    </span>
+                    {a.notes && (
+                      <span className="text-xs text-slate-400 dark:text-slate-500 ml-2">· {a.notes}</span>
+                    )}
+                  </div>
+                  <button onClick={() => removeHistoryEntry(a.id)}
+                    className="p-1.5 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors">
+                    <Trash2 size={13} className="text-red-400" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Formulário para adicionar nova entrada */}
+          <div className="border-t border-slate-100 dark:border-slate-700/50 pt-4">
+            <p className="text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wide mb-3">
+              Adicionar Alteração
+            </p>
+            <div className="grid grid-cols-3 gap-2 mb-2">
+              <div>
+                <label className="label">Mês</label>
+                <select className="input" value={newAmount.month}
+                  onChange={e => setNewAmount(p => ({ ...p, month: Number(e.target.value) }))}>
+                  {Array.from({ length: 12 }, (_, i) => (
+                    <option key={i + 1} value={i + 1}>{getMonthName(i + 1)}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="label">Ano</label>
+                <input className="input" type="number" min="2020" max="2099"
+                  value={newAmount.year}
+                  onChange={e => setNewAmount(p => ({ ...p, year: Number(e.target.value) }))} />
+              </div>
+              <div>
+                <label className="label">Novo Valor (R$)</label>
+                <input className="input" type="number" step="0.01" placeholder="0,00"
+                  value={newAmount.amount}
+                  onChange={e => setNewAmount(p => ({ ...p, amount: e.target.value }))} />
+              </div>
+            </div>
+            <div className="mb-3">
+              <label className="label">Observação (opcional)</label>
+              <input className="input" placeholder="Ex: Reajuste anual, promoção..."
+                value={newAmount.notes}
+                onChange={e => setNewAmount(p => ({ ...p, notes: e.target.value }))} />
+            </div>
+            <button onClick={saveHistoryEntry} disabled={historySaving || !newAmount.amount}
+              className="btn-primary w-full flex items-center justify-center gap-2">
+              {historySaving
+                ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                : <Plus size={14} />}
+              Registrar Alteração
             </button>
           </div>
         </div>

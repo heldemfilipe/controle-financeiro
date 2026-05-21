@@ -133,6 +133,16 @@ export interface BillAdvance {
   fixed_bills?: FixedBill;
 }
 
+export interface IncomeSourceAmount {
+  id: string;
+  source_id: string;
+  effective_month: number;
+  effective_year: number;
+  amount: number;
+  notes: string | null;
+  created_at: string;
+}
+
 export interface MonthlyBalanceOverride {
   id: string;
   month: number;

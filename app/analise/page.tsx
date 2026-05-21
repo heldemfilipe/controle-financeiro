@@ -6,12 +6,12 @@ import { MonthSelector } from "@/components/ui/MonthSelector";
 import {
   getFixedBills, getCategories, getCardTransactions,
   getMonthlyBillPayments, getMonthlyIncomes, getIncomeSources,
-  getCreditCards, getBillAdvancesForMonth,
+  getCreditCards, getBillAdvancesForMonth, getIncomeSourceAmounts,
 } from "@/lib/queries";
 import { computePrevBalance, clearBalanceCache } from "@/lib/balance";
 import type { MonthlyBillPayment, CardTransaction, BillAdvance } from "@/types";
-import { formatCurrency, getCurrentMonth, getMonthName, filterRegularBills, getAccConfig, computeInstallment } from "@/lib/utils";
-import type { Category, FixedBill, CreditCard as CreditCardType } from "@/types";
+import { formatCurrency, getCurrentMonth, getMonthName, filterRegularBills, getAccConfig, computeInstallment, resolveSourceAmount } from "@/lib/utils";
+import type { Category, FixedBill, CreditCard as CreditCardType, IncomeSourceAmount } from "@/types";
 
 const FALLBACK_COLORS = [
   "#6366f1", "#f59e0b", "#10b981", "#ef4444", "#8b5cf6",
@@ -66,6 +66,7 @@ export default function AnalisePage() {
   const [loading, setLoading] = useState(true);
 
   const [categories,     setCategories]    = useState<Category[]>([]);
+  const [sourceAmounts,  setSourceAmounts] = useState<IncomeSourceAmount[]>([]);
   const [creditCards,    setCreditCards]   = useState<CreditCardType[]>([]);
   const [fixedBills,     setFixedBills]     = useState<FixedBill[]>([]);
   const [titheBill,      setTitheBill]      = useState<FixedBill | null>(null);
@@ -85,7 +86,7 @@ export default function AnalisePage() {
     const pm = month === 1 ? 12 : month - 1;
     const py = month === 1 ? year - 1 : year;
     try {
-      const [cats, bills, payments, txs, sources, incomes, cards, advancesFor,
+      const [cats, bills, payments, txs, sources, incomes, cards, advancesFor, srcAmts,
              prevPayments, prevTxs, prevAdvancesFor] = await Promise.all([
         getCategories(),
         getFixedBills(),
@@ -95,10 +96,12 @@ export default function AnalisePage() {
         getMonthlyIncomes(month, year),
         getCreditCards(),
         getBillAdvancesForMonth(month, year),
+        getIncomeSourceAmounts(),
         getMonthlyBillPayments(pm, py),
         getCardTransactions(pm, py),
         getBillAdvancesForMonth(pm, py),
       ]);
+      setSourceAmounts(srcAmts);
 
       setCategories(cats);
       setCreditCards(cards);
@@ -118,7 +121,7 @@ export default function AnalisePage() {
 
       const inc = sources.reduce((s, src) => {
         const mi = incomes.find(i => i.source_id === src.id);
-        return s + (mi?.amount ?? src.base_amount);
+        return s + (mi?.amount ?? resolveSourceAmount(src, month, year, srcAmts));
       }, 0);
       setIncomeTotal(inc);
 

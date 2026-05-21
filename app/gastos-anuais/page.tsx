@@ -21,6 +21,7 @@ interface MonthData {
   name: string;
   receitas: number;
   essenciais: number;
+  emprestimos: number;
   outros: number;
   cartoes: number;
   despesas: number;
@@ -42,10 +43,15 @@ export default function GastosAnuaisPage() {
       clearBalanceCache();
       const yearData = await computeYearBalances(year);
 
+      const EMPRESTIMO_CATS = new Set(["emprestimo", "financiamento", "empréstimo", "financiamentos"]);
+
       const months: MonthData[] = yearData.map((md, i) => {
         const essenciais = md.billsByCategory["essencial"] ?? 0;
+        const emprestimos = Object.entries(md.billsByCategory)
+          .filter(([k]) => EMPRESTIMO_CATS.has(k))
+          .reduce((s, [, v]) => s + v, 0);
         const outros = Object.entries(md.billsByCategory)
-          .filter(([k]) => k !== "essencial")
+          .filter(([k]) => k !== "essencial" && !EMPRESTIMO_CATS.has(k))
           .reduce((s, [, v]) => s + v, 0);
         const cartoes = md.totalCards;
         const despesas = md.totalBills + cartoes;
@@ -55,6 +61,7 @@ export default function GastosAnuaisPage() {
           name: MONTH_SHORT[i],
           receitas: md.totalIncome,
           essenciais,
+          emprestimos,
           outros,
           cartoes,
           despesas,
@@ -201,6 +208,7 @@ export default function GastosAnuaisPage() {
                     <th className="text-left py-2 text-xs font-semibold text-slate-400 uppercase tracking-wide">Mês</th>
                     <th className="text-right py-2 px-2 text-xs font-semibold text-emerald-600 uppercase tracking-wide">Receitas</th>
                     <th className="text-right py-2 px-2 text-xs font-semibold text-primary-600 uppercase tracking-wide hidden sm:table-cell">Essenc.</th>
+                    <th className="text-right py-2 px-2 text-xs font-semibold text-orange-600 uppercase tracking-wide hidden md:table-cell">Emprest.</th>
                     <th className="text-right py-2 px-2 text-xs font-semibold text-amber-600 uppercase tracking-wide hidden sm:table-cell">Outros</th>
                     <th className="text-right py-2 px-2 text-xs font-semibold text-red-500 uppercase tracking-wide hidden md:table-cell">Cartões</th>
                     <th className="text-right py-2 px-2 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Despesas</th>
@@ -230,6 +238,7 @@ export default function GastosAnuaisPage() {
                           {row.receitas > 0 ? formatCurrency(row.receitas) : <span className="text-slate-300 dark:text-slate-600">—</span>}
                         </td>
                         <td className="py-2 px-2 text-right text-primary-700 dark:text-primary-400 tabular-nums hidden sm:table-cell">{formatCurrency(row.essenciais)}</td>
+                        <td className="py-2 px-2 text-right text-orange-700 dark:text-orange-400 tabular-nums hidden md:table-cell">{row.emprestimos > 0 ? formatCurrency(row.emprestimos) : <span className="text-slate-300 dark:text-slate-600">—</span>}</td>
                         <td className="py-2 px-2 text-right text-amber-700 dark:text-amber-400 tabular-nums hidden sm:table-cell">{formatCurrency(row.outros)}</td>
                         <td className="py-2 px-2 text-right text-red-600 tabular-nums hidden md:table-cell">
                           {row.cartoes > 0 ? formatCurrency(row.cartoes) : <span className="text-slate-300 dark:text-slate-600">—</span>}
@@ -262,6 +271,7 @@ export default function GastosAnuaisPage() {
                     <td className="py-2.5 font-bold text-slate-700 dark:text-slate-200">TOTAL</td>
                     <td className="py-2.5 px-2 text-right font-bold text-emerald-700 dark:text-emerald-400 tabular-nums">{formatCurrency(totalReceitas)}</td>
                     <td className="py-2.5 px-2 text-right font-bold text-primary-700 dark:text-primary-400 tabular-nums hidden sm:table-cell">{formatCurrency(data.reduce((s, d) => s + d.essenciais, 0))}</td>
+                    <td className="py-2.5 px-2 text-right font-bold text-orange-700 dark:text-orange-400 tabular-nums hidden md:table-cell">{formatCurrency(data.reduce((s, d) => s + d.emprestimos, 0))}</td>
                     <td className="py-2.5 px-2 text-right font-bold text-amber-700 dark:text-amber-400 tabular-nums hidden sm:table-cell">{formatCurrency(data.reduce((s, d) => s + d.outros, 0))}</td>
                     <td className="py-2.5 px-2 text-right font-bold text-red-600 tabular-nums hidden md:table-cell">{formatCurrency(totalCartoes)}</td>
                     <td className="py-2.5 px-2 text-right font-bold text-slate-700 dark:text-slate-200 tabular-nums">{formatCurrency(totalDespesas)}</td>
@@ -294,9 +304,10 @@ export default function GastosAnuaisPage() {
                   <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} tickFormatter={v => `${(v / 1000).toFixed(0)}k`} width={36} />
                   <Tooltip content={<ChartTooltip />} />
                   <Legend wrapperStyle={{ fontSize: 11 }} />
-                  <Bar dataKey="essenciais" name="Essenciais" stackId="a" fill="#6366f1" />
-                  <Bar dataKey="outros"     name="Outros"     stackId="a" fill="#f59e0b" />
-                  <Bar dataKey="cartoes"    name="Cartões"    stackId="a" fill="#ef4444" radius={[3, 3, 0, 0]} />
+                  <Bar dataKey="essenciais"  name="Essenciais"       stackId="a" fill="#6366f1" />
+                  <Bar dataKey="emprestimos" name="Emprest./Financ." stackId="a" fill="#ea580c" />
+                  <Bar dataKey="outros"      name="Outros"           stackId="a" fill="#f59e0b" />
+                  <Bar dataKey="cartoes"     name="Cartões"          stackId="a" fill="#ef4444" radius={[3, 3, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer></div>
             </div>

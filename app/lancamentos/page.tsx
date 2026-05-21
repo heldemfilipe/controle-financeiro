@@ -16,7 +16,7 @@ import {
   deleteCardTransactionsFollowing, updateCategoryForFollowing, updateAmountForFollowing,
   insertCardTransactions,
   getMonthlyIncomes, upsertMonthlyIncome, toggleIncomeReceived,
-  getTransactionSuggestions,
+  getTransactionSuggestions, upsertMonthlyBillPayment,
 } from "@/lib/queries";
 import { DescriptionAutocomplete, type TxSuggestion } from "@/components/ui/DescriptionAutocomplete";
 import { MONTHS } from "@/types";
@@ -59,6 +59,12 @@ export default function LancamentosPage() {
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [txSuggestions, setTxSuggestions] = useState<TxSuggestion[]>([]);
   const [owners, setOwners] = useState<Owner[]>([]);
+
+  type DeleteTarget =
+    | { type: "income"; id: string; label: string }
+    | { type: "bill";   bill: FixedBill }
+    | { type: "tx";     tx: CardTransaction };
+  const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
 
   const { toast } = useToast();
 
@@ -114,11 +120,8 @@ export default function LancamentosPage() {
     setLoading(false);
   }
 
-  async function removeIncome(id: string) {
-    if (!confirm("Remover esta fonte de renda?")) return;
-    await deleteIncomeSource(id);
-    toast("Receita removida");
-    await loadAll();
+  function removeIncome(src: IncomeSource) {
+    setDeleteTarget({ type: "income", id: src.id, label: src.name });
   }
 
   async function toggleIncome(src: IncomeSource, received: boolean) {
@@ -151,11 +154,8 @@ export default function LancamentosPage() {
     setLoading(false);
   }
 
-  async function removeBill(id: string) {
-    if (!confirm("Remover esta conta?")) return;
-    await deleteFixedBill(id);
-    toast("Conta removida");
-    await loadAll();
+  function removeBill(bill: FixedBill) {
+    setDeleteTarget({ type: "bill", bill });
   }
 
   // ── Cards ────────────────────────────────────────────────────────────────────
@@ -258,21 +258,37 @@ export default function LancamentosPage() {
     }
   }
 
-  async function removeTx(tx: CardTransaction) {
-    if (!confirm("Remover este lançamento?")) return;
-    if (tx.installment_total > 1) {
-      const removeAll = confirm(
-        `Parcela ${tx.installment_current}/${tx.installment_total} · "${tx.description}"\n\nOK = remover esta e todas as parcelas seguintes\nCancelar = remover só esta`
-      );
-      if (removeAll) {
-        await deleteCardTransactionsFollowing(tx);
-      } else {
-        await deleteCardTransaction(tx.id);
+  function removeTx(tx: CardTransaction) {
+    setDeleteTarget({ type: "tx", tx });
+  }
+
+  async function confirmDelete(scope: "this" | "following" | "permanent") {
+    if (!deleteTarget) return;
+    setLoading(true);
+    try {
+      if (deleteTarget.type === "income") {
+        await deleteIncomeSource(deleteTarget.id);
+        toast("Receita removida");
+      } else if (deleteTarget.type === "bill") {
+        if (scope === "this") {
+          await upsertMonthlyBillPayment({ bill_id: deleteTarget.bill.id, month, year, amount: 0 });
+          toast("Conta ignorada neste mês");
+        } else {
+          await deleteFixedBill(deleteTarget.bill.id);
+          toast("Conta removida");
+        }
+      } else if (deleteTarget.type === "tx") {
+        if (scope === "following") {
+          await deleteCardTransactionsFollowing(deleteTarget.tx);
+        } else {
+          await deleteCardTransaction(deleteTarget.tx.id);
+        }
+        toast("Lançamento removido");
       }
-    } else {
-      await deleteCardTransaction(tx.id);
-    }
-    await loadAll();
+      setDeleteTarget(null);
+      await loadAll();
+    } catch { toast("Erro ao remover", "error"); }
+    setLoading(false);
   }
 
   const tabs: { key: Tab; label: string; icon: any }[] = [
@@ -414,7 +430,7 @@ export default function LancamentosPage() {
                             <Pencil size={13} className="text-slate-400 dark:text-slate-500" />
                           </button>
                           <button
-                            onClick={() => removeIncome(src.id)}
+                            onClick={() => removeIncome(src)}
                             className="p-1.5 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg"
                           >
                             <Trash2 size={13} className="text-red-400" />
@@ -544,7 +560,7 @@ export default function LancamentosPage() {
                             <Pencil size={13} className="text-slate-400 dark:text-slate-500" />
                           </button>
                           <button
-                            onClick={() => removeBill(bill.id)}
+                            onClick={() => removeBill(bill)}
                             className="p-1.5 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg"
                           >
                             <Trash2 size={13} className="text-red-400" />
@@ -1022,7 +1038,7 @@ export default function LancamentosPage() {
               <select className="input" value={editTx.card_id ?? ""}
                 onChange={e => setEditTx(p => ({ ...p, card_id: e.target.value }))}>
                 <option value="">Selecione...</option>
-                {creditCards.map(c => (
+                {[...creditCards].sort((a, b) => a.name.localeCompare(b.name, "pt-BR")).map(c => (
                   <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
@@ -1179,6 +1195,91 @@ export default function LancamentosPage() {
               className="btn-primary flex-1">Salvar</button>
           </div>
         </div>
+      </Modal>
+
+      {/* ── Modal de confirmação de exclusão ───────────────────────────────── */}
+      <Modal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} title="Remover lançamento" size="sm">
+        {deleteTarget && (
+          <div className="space-y-4">
+            {/* Descrição */}
+            <p className="text-sm text-slate-600 dark:text-slate-300">
+              {deleteTarget.type === "income" && (
+                <>Remover a receita <strong>"{deleteTarget.label}"</strong>?</>
+              )}
+              {deleteTarget.type === "bill" && (
+                <><strong>"{deleteTarget.bill.name}"</strong> é uma conta recorrente. Como deseja remover?</>
+              )}
+              {deleteTarget.type === "tx" && deleteTarget.tx.installment_total > 1 && (
+                <>Parcela <strong>{deleteTarget.tx.installment_current}/{deleteTarget.tx.installment_total}</strong> de <strong>"{deleteTarget.tx.description}"</strong>. O que deseja fazer?</>
+              )}
+              {deleteTarget.type === "tx" && deleteTarget.tx.installment_total <= 1 && (
+                <>Remover o lançamento <strong>"{deleteTarget.tx.description}"</strong>?</>
+              )}
+            </p>
+
+            {/* Opções */}
+            <div className="flex flex-col gap-2">
+              {deleteTarget.type === "bill" && (
+                <>
+                  <button
+                    onClick={() => confirmDelete("this")}
+                    disabled={loading}
+                    className="w-full text-left px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
+                  >
+                    <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Só este mês</p>
+                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">A conta continua nos meses seguintes</p>
+                  </button>
+                  <button
+                    onClick={() => confirmDelete("permanent")}
+                    disabled={loading}
+                    className="w-full text-left px-4 py-3 rounded-xl border border-red-200 dark:border-red-800/50 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                  >
+                    <p className="text-sm font-medium text-red-600 dark:text-red-400">Remover permanentemente</p>
+                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Remove a conta de todos os meses</p>
+                  </button>
+                </>
+              )}
+
+              {deleteTarget.type === "tx" && deleteTarget.tx.installment_total > 1 && (
+                <>
+                  <button
+                    onClick={() => confirmDelete("this")}
+                    disabled={loading}
+                    className="w-full text-left px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
+                  >
+                    <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Só esta parcela</p>
+                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">As parcelas seguintes continuam normalmente</p>
+                  </button>
+                  <button
+                    onClick={() => confirmDelete("following")}
+                    disabled={loading}
+                    className="w-full text-left px-4 py-3 rounded-xl border border-red-200 dark:border-red-800/50 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                  >
+                    <p className="text-sm font-medium text-red-600 dark:text-red-400">Esta e as parcelas seguintes</p>
+                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Remove da parcela {deleteTarget.tx.installment_current} até a {deleteTarget.tx.installment_total}</p>
+                  </button>
+                </>
+              )}
+
+              {((deleteTarget.type === "tx" && deleteTarget.tx.installment_total <= 1) || deleteTarget.type === "income") && (
+                <button
+                  onClick={() => confirmDelete("this")}
+                  disabled={loading}
+                  className="w-full text-left px-4 py-3 rounded-xl border border-red-200 dark:border-red-800/50 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                >
+                  <p className="text-sm font-medium text-red-600 dark:text-red-400">Confirmar remoção</p>
+                </button>
+              )}
+
+              <button
+                onClick={() => setDeleteTarget(null)}
+                className="w-full px-4 py-2.5 rounded-xl text-sm text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   );

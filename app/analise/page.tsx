@@ -6,10 +6,10 @@ import { MonthSelector } from "@/components/ui/MonthSelector";
 import {
   getFixedBills, getCategories, getCardTransactions,
   getMonthlyBillPayments, getMonthlyIncomes, getIncomeSources,
-  getCreditCards,
+  getCreditCards, getBillAdvancesForMonth,
 } from "@/lib/queries";
 import { computePrevBalance } from "@/lib/balance";
-import type { MonthlyBillPayment, CardTransaction } from "@/types";
+import type { MonthlyBillPayment, CardTransaction, BillAdvance } from "@/types";
 import { formatCurrency, getCurrentMonth, getMonthName, filterRegularBills, getAccConfig, computeInstallment } from "@/lib/utils";
 import type { Category, FixedBill, CreditCard as CreditCardType } from "@/types";
 
@@ -71,7 +71,9 @@ export default function AnalisePage() {
   const [titheBill,      setTitheBill]      = useState<FixedBill | null>(null);
   const [titheAmount,    setTitheAmount]    = useState(0);
   const [monthlyBillAmt, setMonthlyBillAmt] = useState<Record<string, number>>({});
+  const [advancedBillIds, setAdvancedBillIds] = useState<Set<string>>(new Set());
   const [cardByCat,      setCardByCat]      = useState<Record<string, CardCatData>>({});
+  const [prevCatMap,     setPrevCatMap]     = useState<Record<string, number>>({});
   const [incomeTotal,    setIncomeTotal]    = useState(0);
   const [prevBalance,    setPrevBalance]    = useState(0);
 
@@ -79,8 +81,11 @@ export default function AnalisePage() {
 
   async function loadData() {
     setLoading(true);
+    const pm = month === 1 ? 12 : month - 1;
+    const py = month === 1 ? year - 1 : year;
     try {
-      const [cats, bills, payments, txs, sources, incomes, cards] = await Promise.all([
+      const [cats, bills, payments, txs, sources, incomes, cards, advancesFor,
+             prevPayments, prevTxs, prevAdvancesFor] = await Promise.all([
         getCategories(),
         getFixedBills(),
         getMonthlyBillPayments(month, year),
@@ -88,10 +93,15 @@ export default function AnalisePage() {
         getIncomeSources(month, year),
         getMonthlyIncomes(month, year),
         getCreditCards(),
+        getBillAdvancesForMonth(month, year),
+        getMonthlyBillPayments(pm, py),
+        getCardTransactions(pm, py),
+        getBillAdvancesForMonth(pm, py),
       ]);
 
       setCategories(cats);
       setCreditCards(cards);
+      setAdvancedBillIds(new Set(advancesFor.map(a => a.bill_id)));
       const tithe = bills.find(b => b.is_tithe) ?? null;
       const regular = filterRegularBills(bills);
       setFixedBills(regular);
@@ -118,6 +128,34 @@ export default function AnalisePage() {
         setTitheAmount(0);
       }
 
+      // ── Mês anterior: monta categoryMap para comparativo ──────────────────
+      const prevAdvancedIds = new Set(prevAdvancesFor.map((a: BillAdvance) => a.bill_id));
+      const prevBillAmts: Record<string, number> = {};
+      regular.forEach(b => {
+        const p = prevPayments.find((pp: MonthlyBillPayment) => pp.bill_id === b.id);
+        prevBillAmts[b.id] = p?.amount ?? b.amount;
+      });
+      const prevVisibleBills = regular.filter(b => {
+        if (!b.installment_total) return true;
+        if (b.installment_start_month == null || b.installment_start_year == null) return true;
+        return computeInstallment(b, pm, py) !== null;
+      });
+      const prevMap: Record<string, number> = {};
+      prevVisibleBills.forEach(b => {
+        if (prevAdvancedIds.has(b.id)) return;
+        const cat = b.category || "outros";
+        prevMap[cat] = (prevMap[cat] ?? 0) + (prevBillAmts[b.id] ?? b.amount);
+      });
+      if (tithe) {
+        const prevTithePayment = prevPayments.find((pp: MonthlyBillPayment) => pp.bill_id === tithe.id);
+        const prevTitheAmt = prevTithePayment?.amount ?? tithe.amount;
+        prevMap[tithe.category ?? "essencial"] = (prevMap[tithe.category ?? "essencial"] ?? 0) + prevTitheAmt;
+      }
+      Object.entries(groupCardByCat(prevTxs, cards)).forEach(([cat, { total }]) => {
+        prevMap[cat] = (prevMap[cat] ?? 0) + total;
+      });
+      setPrevCatMap(prevMap);
+
       const prev = await computePrevBalance(month, year);
       setPrevBalance(prev);
     } finally {
@@ -135,6 +173,7 @@ export default function AnalisePage() {
 
   const categoryMap: Record<string, number> = {};
   visibleFixedBills.forEach(b => {
+    if (advancedBillIds.has(b.id)) return; // já paga antecipadamente — não conta neste mês
     const cat = b.category || "outros";
     categoryMap[cat] = (categoryMap[cat] ?? 0) + (monthlyBillAmt[b.id] ?? b.amount);
   });
@@ -216,8 +255,11 @@ export default function AnalisePage() {
               <div className="space-y-4">
                 {catList.map(entry => {
                   const pct = totalExpenses > 0 ? (entry.value / totalExpenses) * 100 : 0;
-                  const bills = visibleFixedBills.filter(b => (b.category || "outros") === entry.rawName);
+                  const bills = visibleFixedBills.filter(b => (b.category || "outros") === entry.rawName && !advancedBillIds.has(b.id));
                   const cardData = cardByCat[entry.rawName];
+                  const prevVal = prevCatMap[entry.rawName];
+                  const delta = prevVal != null ? entry.value - prevVal : null;
+                  const deltaPct = (delta != null && prevVal! > 0) ? (delta / prevVal!) * 100 : null;
                   return (
                     <div key={entry.rawName}>
                       {/* Nome + valor */}
@@ -228,11 +270,22 @@ export default function AnalisePage() {
                             {entry.name}
                           </span>
                         </div>
-                        <div className="shrink-0 ml-3 flex items-baseline gap-1.5">
-                          <span className="text-sm font-bold text-slate-700 dark:text-slate-200">
-                            {formatCurrency(entry.value)}
-                          </span>
-                          <span className="text-xs text-slate-400">{pct.toFixed(0)}%</span>
+                        <div className="shrink-0 ml-3 flex items-center gap-2">
+                          {delta != null && Math.abs(delta) >= 0.01 && (
+                            <span className={`text-xs font-medium flex items-center gap-0.5 ${delta > 0 ? "text-red-400" : "text-emerald-500"}`}>
+                              {delta > 0 ? "▲" : "▼"}
+                              {formatCurrency(Math.abs(delta))}
+                              {deltaPct != null && (
+                                <span className="text-slate-400 font-normal">({Math.abs(deltaPct).toFixed(0)}%)</span>
+                              )}
+                            </span>
+                          )}
+                          <div className="flex items-baseline gap-1.5">
+                            <span className="text-sm font-bold text-slate-700 dark:text-slate-200">
+                              {formatCurrency(entry.value)}
+                            </span>
+                            <span className="text-xs text-slate-400">{pct.toFixed(0)}%</span>
+                          </div>
                         </div>
                       </div>
 

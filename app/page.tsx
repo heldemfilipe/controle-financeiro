@@ -14,12 +14,10 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { MonthSelector } from "@/components/ui/MonthSelector";
 import { ChartTooltip } from "@/components/ui/ChartTooltip";
 import {
-  getMonthlyIncomes, getMonthlyBillPayments,
-  getCardTransactions, getFixedBills, getCreditCards,
-  getMonthlyCardPayments, getIncomeSources, getCategories, getIncomeSourceAmounts,
+  getCreditCards, getMonthlyCardPayments, getCategories,
 } from "@/lib/queries";
 import { computeYearBalances, clearBalanceCache } from "@/lib/balance";
-import { formatCurrency, getMonthName, getCurrentMonth, computeInstallment, resolveSourceAmount } from "@/lib/utils";
+import { formatCurrency, getMonthName, getCurrentMonth } from "@/lib/utils";
 import { MONTH_SHORT } from "@/types";
 import type { Category } from "@/types";
 
@@ -55,168 +53,72 @@ export default function DashboardPage() {
   async function loadData() {
     setLoading(true);
     try {
-      const [incomes, bills, txs, allBills, cards, cardPayments, incomeSrcs, cats, srcAmts] = await Promise.all([
-        getMonthlyIncomes(month, year),
-        getMonthlyBillPayments(month, year),
-        getCardTransactions(month, year),
-        getFixedBills(),
+      // Fonte única de verdade: computeYearBalances calcula os 12 meses do ano
+      // (já respeita adiantamentos, dízimo, overrides e carry-over). O mês
+      // selecionado é apenas accYear[month - 1].
+      clearBalanceCache();
+      const [cats, cards, cardPayments, accYear] = await Promise.all([
+        getCategories(),
         getCreditCards(),
         getMonthlyCardPayments(month, year),
-        getIncomeSources(),
-        getCategories(),
-        getIncomeSourceAmounts(),
+        computeYearBalances(year),
       ]);
 
-      // ── Receita do mês ────────────────────────────────────────────────────────
-      const inc = incomeSrcs.reduce((s, src) => {
-        const mi = incomes.find(i => i.source_id === src.id);
-        if (src.is_recurring === false) {
-          if (src.one_time_month !== month || src.one_time_year !== year) return s;
-        }
-        return s + (mi?.amount ?? resolveSourceAmount(src, month, year, srcAmts));
-      }, 0);
+      const cur = accYear[month - 1];
 
-      // ── Filtra contas ─────────────────────────────────────────────────────────
-      const titheBillItem = allBills.find(b => b.is_tithe);
-      const regularAllBills = allBills.filter(b => !b.is_tithe);
-      const visibleBills = regularAllBills.filter(bill => {
-        if (!bill.installment_total) return true;
-        if (bill.installment_start_month == null || bill.installment_start_year == null) return true;
-        return computeInstallment(bill, month, year) !== null;
-      });
-
-      // Merge pagamentos + contas sem registro
-      const billIds = bills.map(b => b.bill_id);
-      const missingBills = visibleBills.filter(b => !billIds.includes(b.id));
-      const regularItems: { amount: number; category: string }[] = [
-        ...bills
-          .filter(b => visibleBills.some(vb => vb.id === b.bill_id))
-          .map(b => ({ amount: b.amount ?? b.fixed_bills?.amount ?? 0, category: b.fixed_bills?.category ?? "outros" })),
-        ...missingBills.map(b => ({ amount: b.amount, category: b.category })),
-      ];
-
-      // Dízimo
-      const tithePayment = titheBillItem ? bills.find(b => b.bill_id === titheBillItem.id) : null;
-      const titheAmt = tithePayment?.amount ?? (titheBillItem ? inc * 0.1 : 0);
-      const titheCategory = titheBillItem?.category ?? "essencial";
-      const allBillsThisMonth = titheBillItem
-        ? [...regularItems, { amount: titheAmt, category: titheCategory }]
-        : regularItems;
-
-      // Agrupa por categoria
-      const billsByCat: Record<string, number> = {};
-      allBillsThisMonth.forEach(b => {
-        billsByCat[b.category] = (billsByCat[b.category] ?? 0) + b.amount;
-      });
-      const billsTotal = Object.values(billsByCat).reduce((s, v) => s + v, 0);
-
-      // Cartões — líquido (créditos abate)
-      const cardsTotal = txs.reduce((s, t) => s - t.amount, 0);
-
+      // ── Resumo do mês selecionado ─────────────────────────────────────────────
+      const inc        = cur?.totalIncome ?? 0;
+      const billsTotal = cur?.totalBills ?? 0;
+      const cardsTotal = cur?.totalCards ?? 0;
       setTotalIncome(inc);
       setTotalBills(billsTotal);
       setTotalCards(cardsTotal);
-      setBalance(inc - billsTotal - cardsTotal);
+      setBalance(cur?.balance ?? 0);
 
-      // ── Pie chart: categorias reais + cartões ─────────────────────────────────
-      const pieEntries = Object.entries(billsByCat).map(([catName, value], idx) => ({
-        name: catName.charAt(0).toUpperCase() + catName.slice(1),
-        value,
-        color: getCatColor(catName, cats, idx),
-      }));
+      // ── Pie chart: categorias de contas + cartões ─────────────────────────────
+      const pieEntries = Object.entries(cur?.billsByCategory ?? {})
+        .filter(([, v]) => v > 0)
+        .map(([catName, value], idx) => ({
+          name: catName.charAt(0).toUpperCase() + catName.slice(1),
+          value,
+          color: getCatColor(catName, cats, idx),
+        }));
       if (cardsTotal > 0) pieEntries.push({ name: "Cartões", value: cardsTotal, color: "#ef4444" });
       setPieData(pieEntries);
 
-      // ── Cards summary — usa total confirmado de monthly_card_payments quando disponível ─
+      // ── Situação dos cartões — prefere total confirmado da fatura ─────────────
       const cardSummary = cards.map(card => {
-        const cardTxs = txs.filter(t => t.card_id === card.id);
-        const txTotal = cardTxs.reduce((s, t) => s - t.amount, 0);
+        const txTotal = cur?.cardTotals[card.id] ?? 0;
         const payment = cardPayments.find(p => p.card_id === card.id);
-        // Prefere o total armazenado no pagamento (fatura confirmada); senão usa soma das transações
         const total = payment?.total_amount ?? txTotal;
         return { ...card, total, paid: payment?.paid ?? false };
       }).filter(c => c.total > 0);
       setCardsPaid(cardSummary);
 
-      // ── Yearly chart: categorias dinâmicas ───────────────────────────────────
-      const allCatKeys = new Set<string>();
-
-      const yearlyPromises = Array.from({ length: 12 }, async (_, i) => {
-        const m = i + 1;
-        const [inc2, billPay, txs2] = await Promise.all([
-          getMonthlyIncomes(m, year),
-          getMonthlyBillPayments(m, year),
-          getCardTransactions(m, year),
-        ]);
-
-        const income2 = incomeSrcs.reduce((s, src) => {
-          const mi = inc2.find(i => i.source_id === src.id);
-          if (src.is_recurring === false) {
-            if (src.one_time_month !== m || src.one_time_year !== year) return s;
-          }
-          return s + (mi?.amount ?? resolveSourceAmount(src, m, year, srcAmts));
-        }, 0);
-
-        const visible2 = regularAllBills.filter(bill => {
-          if (!bill.installment_total) return true;
-          if (bill.installment_start_month == null || bill.installment_start_year == null) return true;
-          return computeInstallment(bill, m, year) !== null;
+      // ── Gráfico anual: derivado da mesma fonte que a linha de saldo ───────────
+      const catTotalsYear: Record<string, number> = {};
+      accYear.forEach(md => {
+        Object.entries(md.billsByCategory).forEach(([k, v]) => {
+          catTotalsYear[k] = (catTotalsYear[k] ?? 0) + v;
         });
-        const billIds2 = billPay.map(b => b.bill_id);
-        const missing2 = visible2.filter(b => !billIds2.includes(b.id));
-
-        const tithePay2 = titheBillItem ? billPay.find(b => b.bill_id === titheBillItem.id) : null;
-        const titheAmt2 = tithePay2?.amount ?? (titheBillItem ? income2 * 0.1 : 0);
-        const titheCategory2 = titheBillItem?.category ?? "essencial";
-
-        const billsWithCats2: { amount: number; category: string }[] = [
-          ...billPay
-            .filter(b => visible2.some(vb => vb.id === b.bill_id))
-            .map(b => ({ amount: b.amount ?? b.fixed_bills?.amount ?? 0, category: b.fixed_bills?.category ?? "outros" })),
-          ...missing2.map(b => ({ amount: b.amount, category: b.category })),
-        ];
-        if (titheBillItem) billsWithCats2.push({ amount: titheAmt2, category: titheCategory2 });
-
-        const catTotals2: Record<string, number> = {};
-        billsWithCats2.forEach(b => {
-          catTotals2[b.category] = (catTotals2[b.category] ?? 0) + b.amount;
-          allCatKeys.add(b.category);
-        });
-
-        const cards2 = txs2.reduce((s, t) => s - t.amount, 0);
-        const despesas2 = Object.values(catTotals2).reduce((s, v) => s + v, 0) + cards2;
-
-        return {
-          name: MONTH_SHORT[i],
-          receitas: income2,
-          ...catTotals2,
-          cartoes: cards2,
-          despesas: despesas2,
-        };
       });
+      const finalCatKeys = Object.keys(catTotalsYear).filter(k => catTotalsYear[k] > 0);
 
-      const ydRaw = await Promise.all(yearlyPromises);
-
-      // Garante que todos os meses têm todos os keys de categoria (preenche 0)
-      const finalCatKeys = Array.from(allCatKeys);
-      const yd = ydRaw.map(d => {
-        const row = { ...d } as any;
-        finalCatKeys.forEach(k => { if (row[k] === undefined) row[k] = 0; });
+      const yd = accYear.map((md, i) => {
+        const row: Record<string, number | string | null> = {
+          name: MONTH_SHORT[i],
+          receitas: md.totalIncome,
+          cartoes: md.totalCards,
+          saldoAcumulado: md.saldoAcumulado,
+        };
+        finalCatKeys.forEach(k => { row[k] = md.billsByCategory[k] ?? 0; });
         return row;
       });
 
       setCatKeys(finalCatKeys.map((k, i) => ({ key: k, color: getCatColor(k, cats, i) })));
+      setYearlyData(yd);
 
-      // Saldo acumulado — usa módulo centralizado (respeita overrides + carry-over)
-      clearBalanceCache();
-      const accYear = await computeYearBalances(year);
-      const ydWithAcc = yd.map((d, i) => ({
-        ...d,
-        saldoAcumulado: accYear[i]?.saldoAcumulado ?? null,
-      }));
-      setYearlyData(ydWithAcc);
-
-      const monthAcc = accYear[month - 1]?.saldoAcumulado ?? null;
+      const monthAcc = cur?.saldoAcumulado ?? null;
       setAccBalance(typeof monthAcc === "number" ? monthAcc : null);
 
     } catch (e) {

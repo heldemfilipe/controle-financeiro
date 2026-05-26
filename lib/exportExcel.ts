@@ -1,11 +1,12 @@
 import * as XLSX from "xlsx";
 import type { FixedBill } from "@/types";
-import { computeInstallment } from "@/lib/utils";
+import { computeInstallment, resolveSourceAmount } from "@/lib/utils";
 import { MONTHS } from "@/types";
 import {
   getCardTransactionsByYear,
   getFixedBills,
   getIncomeSources,
+  getIncomeSourceAmounts,
   getMonthlyBillPayments,
   getMonthlyIncomes,
   getCreditCards,
@@ -29,11 +30,12 @@ export async function exportFinanceiro(year: number) {
   const wb = XLSX.utils.book_new();
 
   // ── Carrega todos os dados ─────────────────────────────────────────────────
-  const [fixedBills, incomeSources, cards, annualTxs] = await Promise.all([
+  const [fixedBills, incomeSources, cards, annualTxs, srcAmounts] = await Promise.all([
     getFixedBills(),
     getIncomeSources(),
     getCreditCards(),
     getCardTransactionsByYear(year),
+    getIncomeSourceAmounts(),
   ]);
 
   const [allMonthlyIncomes, allBillPayments] = await Promise.all([
@@ -41,10 +43,16 @@ export async function exportFinanceiro(year: number) {
     Promise.all(Array.from({ length: 12 }, (_, i) => getMonthlyBillPayments(i + 1, year))),
   ]);
 
-  // Categorias de contas fixas + cartão
+  // Categorias de contas fixas + cartão (+ dízimo, contabilizado como despesa no app)
+  const titheBill   = fixedBills.find(b => b.is_tithe);
+  const titheCat    = titheBill?.category || "essencial";
   const billCatKeys = Array.from(new Set(fixedBills.filter(b => !b.is_tithe).map(b => b.category || "outros")));
   const cardCatKeys = Array.from(new Set(annualTxs.map(t => t.category ?? "Sem categoria")));
-  const allCatKeys  = Array.from(new Set([...billCatKeys, ...cardCatKeys]));
+  const allCatKeys  = Array.from(new Set([
+    ...billCatKeys,
+    ...cardCatKeys,
+    ...(titheBill ? [titheCat] : []),
+  ]));
 
   // Transações de cartão por mês → categoria
   const annualCardByCat: Record<number, Record<string, number>> = {};
@@ -72,12 +80,13 @@ export async function exportFinanceiro(year: number) {
       );
       const receitas = sourcesM.reduce((s, src) => {
         const mi = monthIncs.find(i => i.source_id === src.id);
-        return s + (mi?.amount ?? src.base_amount);
+        return s + (mi?.amount ?? resolveSourceAmount(src, m, year, srcAmounts));
       }, 0);
 
       const catAmounts: Record<string, number> = {};
       allCatKeys.forEach(cat => {
         const billAmt = fixedBills.filter(b => {
+          if (b.is_tithe) return false;
           if ((b.category || "outros") !== cat) return false;
           if (!b.installment_total) return true;
           if (b.installment_start_month == null || b.installment_start_year == null) return true;
@@ -89,6 +98,12 @@ export async function exportFinanceiro(year: number) {
         const cardAmt = annualCardByCat[m]?.[cat] ?? 0;
         catAmounts[cat] = billAmt + cardAmt;
       });
+
+      // Dízimo: pagamento registrado, senão 10% da receita (mesma regra do app)
+      if (titheBill) {
+        const tithePay = monthBillPays.find(p => p.bill_id === titheBill.id);
+        catAmounts[titheCat] = (catAmounts[titheCat] ?? 0) + (tithePay?.amount ?? receitas * 0.1);
+      }
 
       const totalDesp = Object.values(catAmounts).reduce((s, v) => s + v, 0);
       const saldo = receitas - totalDesp;
@@ -177,7 +192,7 @@ export async function exportFinanceiro(year: number) {
           if (src.one_time_month !== m || src.one_time_year !== year) return 0;
         }
         const mi = allMonthlyIncomes[i].find(inc => inc.source_id === src.id);
-        return currency(mi?.amount ?? src.base_amount);
+        return currency(mi?.amount ?? resolveSourceAmount(src, m, year, srcAmounts));
       });
       const avg = monthly.reduce((s, v) => s + v, 0) / 12;
       rows.push([src.name, src.owner, src.type, ...monthly, currency(avg)]);
@@ -224,13 +239,14 @@ export async function exportMonth(month: number, year: number) {
   const wb = XLSX.utils.book_new();
   const monthName = MONTHS[month - 1];
 
-  const [bills, incomeSources, cards, txs, billPays, incomes] = await Promise.all([
+  const [bills, incomeSources, cards, txs, billPays, incomes, srcAmounts] = await Promise.all([
     getFixedBills(),
     getIncomeSources(month, year),
     getCreditCards(),
     getCardTransactions(month, year),
     getMonthlyBillPayments(month, year),
     getMonthlyIncomes(month, year),
+    getIncomeSourceAmounts(),
   ]);
 
   // Valor efetivo de cada conta no mês
@@ -249,11 +265,11 @@ export async function exportMonth(month: number, year: number) {
     rows.push(["Fonte", "Titular", "Valor (R$)"]);
     const totalIncome = incomeSources.reduce((s, src) => {
       const mi = incomes.find(i => i.source_id === src.id);
-      return s + (mi?.amount ?? src.base_amount);
+      return s + (mi?.amount ?? resolveSourceAmount(src, month, year, srcAmounts));
     }, 0);
     incomeSources.forEach(src => {
       const mi  = incomes.find(i => i.source_id === src.id);
-      const amt = mi?.amount ?? src.base_amount;
+      const amt = mi?.amount ?? resolveSourceAmount(src, month, year, srcAmounts);
       rows.push([src.name, src.owner, currency(amt)]);
     });
     rows.push(["Total receitas", "", currency(totalIncome)]);

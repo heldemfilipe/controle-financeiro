@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, Pencil, Trash2, TrendingUp, FileText, CreditCard, Check, Loader2 } from "lucide-react";
+import { Plus, Pencil, Trash2, TrendingUp, FileText, CreditCard, Check, Loader2, CalendarClock, CalendarX, RotateCcw } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { MonthSelector } from "@/components/ui/MonthSelector";
 import { Modal } from "@/components/ui/Modal";
@@ -15,7 +15,7 @@ import {
   getCardTransactions, upsertCardTransaction, deleteCardTransaction,
   deleteCardTransactionsFollowing, updateCategoryForFollowing, updateAmountForFollowing,
   insertCardTransactions,
-  getMonthlyIncomes, upsertMonthlyIncome, toggleIncomeReceived,
+  getMonthlyIncomes, upsertMonthlyIncome, toggleIncomeReceived, deleteMonthlyIncome,
   getTransactionSuggestions, upsertMonthlyBillPayment, getIncomeSourceAmounts,
 } from "@/lib/queries";
 import { DescriptionAutocomplete, type TxSuggestion } from "@/components/ui/DescriptionAutocomplete";
@@ -49,6 +49,11 @@ export default function LancamentosPage() {
   const [cardModal,   setCardModal]   = useState(false);
   const [txModal,     setTxModal]     = useState(false);
   const [editIncome, setEditIncome] = useState<Partial<IncomeSource>>({});
+  // Ajuste de valor de uma fonte de renda somente no mês selecionado
+  const [monthIncomeModal, setMonthIncomeModal] = useState(false);
+  const [monthIncomeSrc, setMonthIncomeSrc] = useState<IncomeSource | null>(null);
+  const [monthIncomeAmount, setMonthIncomeAmount] = useState("");
+  const [monthIncomeSkip, setMonthIncomeSkip] = useState(false);
   const [editBill,   setEditBill]   = useState<Partial<FixedBill>>({});
   const [editCard,   setEditCard]   = useState<Partial<CreditCardType>>({});
   const [editTx,     setEditTx]     = useState<Partial<CardTransaction>>({});
@@ -131,6 +136,55 @@ export default function LancamentosPage() {
     const mi = monthlyIncomes.find(m => m.source_id === src.id);
     await toggleIncomeReceived(src.id, month, year, received, mi?.amount ?? resolveSourceAmount(src, month, year, sourceAmounts));
     await loadAll();
+  }
+
+  // ── Ajuste de valor somente no mês selecionado ────────────────────────────────
+  function openMonthIncome(src: IncomeSource) {
+    const mi = monthlyIncomes.find(m => m.source_id === src.id);
+    const defaultAmt = resolveSourceAmount(src, month, year, sourceAmounts);
+    const hasOverride = mi != null && mi.amount !== defaultAmt;
+    const skip = hasOverride && mi!.amount === 0;
+    setMonthIncomeSrc(src);
+    setMonthIncomeSkip(skip);
+    setMonthIncomeAmount(skip ? "" : String((mi?.amount ?? defaultAmt) || ""));
+    setFormErrors({});
+    setMonthIncomeModal(true);
+  }
+
+  async function saveMonthIncome() {
+    if (!monthIncomeSrc) return;
+    const amount = monthIncomeSkip ? 0 : (parseFloat(monthIncomeAmount) || 0);
+    if (!monthIncomeSkip && amount <= 0) {
+      setFormErrors({ monthAmount: "Valor deve ser positivo (ou use 'sem recebimento')" });
+      return;
+    }
+    setFormErrors({});
+    setLoading(true);
+    try {
+      const mi = monthlyIncomes.find(m => m.source_id === monthIncomeSrc.id);
+      await upsertMonthlyIncome({
+        source_id: monthIncomeSrc.id, month, year, amount,
+        // preserva status de recebimento; se pulou o mês, marca como não recebido
+        received: monthIncomeSkip ? false : (mi?.received ?? false),
+        received_date: monthIncomeSkip ? null : (mi?.received_date ?? null),
+      });
+      setMonthIncomeModal(false); setMonthIncomeSrc(null);
+      toast(monthIncomeSkip ? "Recebimento removido deste mês" : "Valor ajustado neste mês");
+      await loadAll();
+    } catch { toast("Erro ao ajustar valor", "error"); }
+    setLoading(false);
+  }
+
+  async function resetMonthIncome() {
+    if (!monthIncomeSrc) return;
+    setLoading(true);
+    try {
+      await deleteMonthlyIncome(monthIncomeSrc.id, month, year);
+      setMonthIncomeModal(false); setMonthIncomeSrc(null);
+      toast("Valor voltou ao padrão");
+      await loadAll();
+    } catch { toast("Erro ao restaurar valor", "error"); }
+    setLoading(false);
   }
 
   // ── Bills ────────────────────────────────────────────────────────────────────
@@ -407,33 +461,64 @@ export default function LancamentosPage() {
               <div className="space-y-0">
                 {incomeSources.map((src) => {
                   const mi = monthlyIncomes.find(m => m.source_id === src.id);
+                  const defaultAmt = resolveSourceAmount(src, month, year, sourceAmounts);
+                  const effectiveAmt = mi?.amount ?? defaultAmt;
+                  const isOverridden = mi != null && mi.amount !== defaultAmt;
+                  const isSkipped = isOverridden && mi!.amount === 0;
                   return (
                     <div key={src.id}
                       className="flex items-center justify-between py-3 border-b border-slate-50 dark:border-slate-700/30 last:border-0">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg flex items-center justify-center">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-8 h-8 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg flex items-center justify-center shrink-0">
                           <TrendingUp size={14} className="text-emerald-600 dark:text-emerald-400" />
                         </div>
-                        <div>
-                          <p className="text-sm font-medium text-slate-700 dark:text-slate-200">{src.name}</p>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-slate-700 dark:text-slate-200 truncate">{src.name}</p>
                           <p className="text-xs text-slate-400 dark:text-slate-500">
                             {src.due_day ? `Dia ${src.due_day}` : "Sem data fixa"} · {owners.find(o => o.id === src.owner)?.name ?? src.owner}
                           </p>
+                          {isOverridden && (
+                            <span className={`inline-flex items-center gap-1 mt-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+                              isSkipped
+                                ? "bg-red-50 text-red-600 dark:bg-red-900/30 dark:text-red-400"
+                                : "bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400"
+                            }`}>
+                              {isSkipped ? <CalendarX size={10} /> : <CalendarClock size={10} />}
+                              {isSkipped
+                                ? `Sem recebimento em ${MONTHS[month - 1]}`
+                                : `Ajustado em ${MONTHS[month - 1]} · padrão ${formatCurrency(defaultAmt)}`}
+                            </span>
+                          )}
                         </div>
                       </div>
-                      <div className="flex items-center gap-3">
-                        <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">
-                          {formatCurrency(mi?.amount ?? resolveSourceAmount(src, month, year, sourceAmounts))}
+                      <div className="flex items-center gap-3 shrink-0">
+                        <p className={`text-sm font-semibold ${
+                          isSkipped ? "text-red-500 line-through" : "text-emerald-700 dark:text-emerald-400"
+                        }`}>
+                          {formatCurrency(effectiveAmt)}
                         </p>
                         <div className="flex gap-1">
                           <button
+                            onClick={() => openMonthIncome(src)}
+                            title={`Ajustar valor de ${MONTHS[month - 1]}`}
+                            className={`p-1.5 rounded-lg ${
+                              isOverridden
+                                ? "bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400 hover:bg-amber-100"
+                                : "hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 dark:text-slate-500"
+                            }`}
+                          >
+                            <CalendarClock size={13} />
+                          </button>
+                          <button
                             onClick={() => { setEditIncome(src); setIncomeModal(true); }}
+                            title="Editar fonte de renda"
                             className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg"
                           >
                             <Pencil size={13} className="text-slate-400 dark:text-slate-500" />
                           </button>
                           <button
                             onClick={() => removeIncome(src)}
+                            title="Excluir fonte de renda"
                             className="p-1.5 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg"
                           >
                             <Trash2 size={13} className="text-red-400" />
@@ -839,6 +924,65 @@ export default function LancamentosPage() {
               className="btn-primary flex-1">Salvar</button>
           </div>
         </div>
+      </Modal>
+
+      {/* ── MODAL: Ajustar valor somente neste mês ── */}
+      <Modal open={monthIncomeModal} onClose={() => { setMonthIncomeModal(false); setMonthIncomeSrc(null); setFormErrors({}); }}
+        title={`Ajustar em ${MONTHS[month - 1]} ${year}`}>
+        {monthIncomeSrc && (() => {
+          const mi = monthlyIncomes.find(m => m.source_id === monthIncomeSrc.id);
+          const defaultAmt = resolveSourceAmount(monthIncomeSrc, month, year, sourceAmounts);
+          const hasOverride = mi != null && mi.amount !== defaultAmt;
+          return (
+            <div className="space-y-3">
+              <div className="bg-slate-50 dark:bg-slate-700/40 rounded-lg px-3 py-2.5">
+                <p className="text-sm font-medium text-slate-700 dark:text-slate-200">{monthIncomeSrc.name}</p>
+                <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
+                  Altera o valor <b>somente em {MONTHS[month - 1]}/{year}</b>. Os demais meses mantêm o valor padrão de {formatCurrency(defaultAmt)}.
+                </p>
+              </div>
+
+              {/* Sem recebimento neste mês */}
+              <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-700/50 rounded-lg px-3 py-2.5">
+                <div>
+                  <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Sem recebimento neste mês</p>
+                  <p className="text-xs text-slate-400 dark:text-slate-500">Zera esta renda só em {MONTHS[month - 1]}</p>
+                </div>
+                <Toggle
+                  checked={monthIncomeSkip}
+                  onChange={v => setMonthIncomeSkip(v)}
+                />
+              </div>
+
+              {/* Valor customizado (oculto quando "sem recebimento") */}
+              {!monthIncomeSkip && (
+                <div>
+                  <label className="label">Valor neste mês (R$)</label>
+                  <input className="input" type="number" step="0.01" placeholder="0,00"
+                    value={monthIncomeAmount}
+                    onChange={e => setMonthIncomeAmount(e.target.value)} />
+                  {formErrors.monthAmount && (
+                    <p className="text-xs text-red-500 mt-1">{formErrors.monthAmount}</p>
+                  )}
+                </div>
+              )}
+
+              {hasOverride && (
+                <button onClick={resetMonthIncome} disabled={loading}
+                  className="w-full flex items-center justify-center gap-1.5 text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-primary-600 dark:hover:text-primary-400 py-1.5">
+                  <RotateCcw size={13} /> Voltar ao valor padrão ({formatCurrency(defaultAmt)})
+                </button>
+              )}
+
+              <div className="flex gap-2 pt-2">
+                <button onClick={() => { setMonthIncomeModal(false); setMonthIncomeSrc(null); setFormErrors({}); }}
+                  className="btn-secondary flex-1">Cancelar</button>
+                <button onClick={saveMonthIncome} disabled={loading}
+                  className="btn-primary flex-1">Salvar</button>
+              </div>
+            </div>
+          );
+        })()}
       </Modal>
 
       {/* ── MODAL: Nova Conta ── */}

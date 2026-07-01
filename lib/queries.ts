@@ -411,6 +411,17 @@ export async function upsertMonthlyIncome(income: Partial<MonthlyIncome>) {
   return data;
 }
 
+/** Remove o ajuste de valor de uma fonte de renda num mês específico (volta ao valor padrão). */
+export async function deleteMonthlyIncome(sourceId: string, month: number, year: number) {
+  const { error } = await supabase
+    .from("monthly_incomes")
+    .delete()
+    .eq("source_id", sourceId)
+    .eq("month", month)
+    .eq("year", year);
+  if (error) throw error;
+}
+
 export async function toggleIncomeReceived(
   sourceId: string, month: number, year: number, received: boolean, amount: number
 ) {

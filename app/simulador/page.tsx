@@ -7,12 +7,12 @@ import {
 } from "recharts";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ChartTooltip } from "@/components/ui/ChartTooltip";
-import { getFixedBills } from "@/lib/queries";
+import { getFixedBills, getBalanceOverrides } from "@/lib/queries";
 import { formatCurrency, getMonthName, computeInstallment, getAccConfig } from "@/lib/utils";
 import { computeYearBalances, clearBalanceCache } from "@/lib/balance";
 import { calculateAmortization, loanSummary } from "@/lib/loan";
 import { MONTH_SHORT } from "@/types";
-import type { FixedBill } from "@/types";
+import type { FixedBill, MonthlyBalanceOverride } from "@/types";
 import {
   Plus, Trash2, ChevronLeft, ChevronRight,
   TrendingUp, TrendingDown, Wallet, FlaskConical,
@@ -131,7 +131,11 @@ function applyMods(
   year: number,
   startBalance: number = 0,
   cfg?: AccCfg,
+  overrides: MonthlyBalanceOverride[] = [],
 ): MonthData[] {
+  // Overrides de saldo (zerar / ajustar acumulado) — mesmos aplicados no cenário atual
+  const overrideMap = new Map<number, MonthlyBalanceOverride>();
+  overrides.forEach(o => overrideMap.set(o.month, o));
   // Pré-computa amortizações de empréstimos (evita recalcular 12x por loan)
   const loanPayments = new Map<string, Map<number, number>>(); // modId → month → payment
   for (const mod of mods) {
@@ -219,6 +223,10 @@ function applyMods(
       return { ...m, saldoAcumulado: 0 };
     }
     acc += m.saldo;
+    // Aplica o mesmo override de saldo do cenário atual (zerar / ajustar acumulado),
+    // para que meses zerados sejam transmitidos igualmente à simulação.
+    const ov = overrideMap.get(m.month);
+    if (ov) acc = ov.auto_zero ? 0 : ov.override_amount;
     return { ...m, saldoAcumulado: acc };
   });
 }
@@ -245,6 +253,7 @@ export default function SimuladorPage() {
   const [mods, setMods]     = useState<ScenarioMod[]>([]);
   const [yearStartBalance, setYearStartBalance] = useState(0);
   const [accCfg, setAccCfg] = useState<AccCfg>(() => getAccConfig());
+  const [overrides, setOverrides] = useState<MonthlyBalanceOverride[]>([]);
 
   // Persist scenario
   useEffect(() => {
@@ -262,8 +271,12 @@ export default function SimuladorPage() {
   async function loadYear() {
     setLoading(true);
     try {
-      const allBills = await getFixedBills();
+      const [allBills, yearOverrides] = await Promise.all([
+        getFixedBills(),
+        getBalanceOverrides(year),
+      ]);
       setBills(allBills);
+      setOverrides(yearOverrides);
       const cfg = getAccConfig();
       setAccCfg(cfg);
 
@@ -294,8 +307,8 @@ export default function SimuladorPage() {
 
   // Derived — memoizados para evitar recalcular em cada render
   const scenarioData = useMemo(
-    () => applyMods(baseData, mods, bills, year, yearStartBalance, accCfg),
-    [baseData, mods, bills, year, yearStartBalance, accCfg],
+    () => applyMods(baseData, mods, bills, year, yearStartBalance, accCfg, overrides),
+    [baseData, mods, bills, year, yearStartBalance, accCfg, overrides],
   );
 
   const totBase = useMemo(() => ({

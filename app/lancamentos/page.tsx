@@ -1,11 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, Pencil, Trash2, TrendingUp, FileText, CreditCard, Check, Loader2, CalendarClock, CalendarX, RotateCcw } from "lucide-react";
+import { TrendingUp, FileText, CreditCard } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { MonthSelector } from "@/components/ui/MonthSelector";
-import { Modal } from "@/components/ui/Modal";
-import { Toggle } from "@/components/ui/Toggle";
 import { useToast } from "@/components/ui/Toast";
 import {
   getIncomeSources, upsertIncomeSource, deleteIncomeSource,
@@ -15,17 +13,26 @@ import {
   getCardTransactions, upsertCardTransaction, deleteCardTransaction,
   deleteCardTransactionsFollowing, updateCategoryForFollowing, updateAmountForFollowing,
   insertCardTransactions,
-  getMonthlyIncomes, upsertMonthlyIncome, toggleIncomeReceived, deleteMonthlyIncome,
+  getMonthlyIncomes, upsertMonthlyIncome, deleteMonthlyIncome,
   getTransactionSuggestions, upsertMonthlyBillPayment, getIncomeSourceAmounts,
 } from "@/lib/queries";
-import { DescriptionAutocomplete, type TxSuggestion } from "@/components/ui/DescriptionAutocomplete";
-import { MONTHS } from "@/types";
-import { formatCurrency, getCurrentMonth, installmentEndDate, computeInstallment, resolveSourceAmount } from "@/lib/utils";
+import { type TxSuggestion } from "@/components/ui/DescriptionAutocomplete";
+import { getCurrentMonth, resolveSourceAmount } from "@/lib/utils";
 import { getOwners, type Owner } from "@/lib/owners";
 import type {
   IncomeSource, IncomeSourceAmount, FixedBill, CreditCard as CreditCardType,
-  CardTransaction, MonthlyIncome, Category,
+  CardTransaction, MonthlyIncome, Category, BillPeriod,
 } from "@/types";
+
+import { ReceitasTab } from "@/components/lancamentos/tabs/ReceitasTab";
+import { ContasTab } from "@/components/lancamentos/tabs/ContasTab";
+import { CartoesTab } from "@/components/lancamentos/tabs/CartoesTab";
+import { IncomeModal } from "@/components/lancamentos/IncomeModal";
+import { MonthIncomeModal } from "@/components/lancamentos/MonthIncomeModal";
+import { BillModal } from "@/components/lancamentos/BillModal";
+import { CardModal } from "@/components/lancamentos/CardModal";
+import { TransactionModal } from "@/components/lancamentos/TransactionModal";
+import { DeleteConfirmModal, type DeleteTarget } from "@/components/lancamentos/DeleteConfirmModal";
 
 type Tab = "receitas" | "contas" | "cartoes";
 
@@ -58,18 +65,12 @@ export default function LancamentosPage() {
   const [editCard,   setEditCard]   = useState<Partial<CreditCardType>>({});
   const [editTx,     setEditTx]     = useState<Partial<CardTransaction>>({});
   const [loading, setLoading] = useState(false);
-  const [billGroupMode, setBillGroupMode] = useState<"quinzena" | "categoria">("quinzena");
-  const [txSort, setTxSort] = useState<Record<string, "date" | "categoria" | "parcelas">>({});
   const [isCredit, setIsCredit] = useState(false);
   const [propagateCategory, setPropagateCategory] = useState(false);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [txSuggestions, setTxSuggestions] = useState<TxSuggestion[]>([]);
   const [owners, setOwners] = useState<Owner[]>([]);
 
-  type DeleteTarget =
-    | { type: "income"; id: string; label: string }
-    | { type: "bill";   bill: FixedBill }
-    | { type: "tx";     tx: CardTransaction };
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
 
   const { toast } = useToast();
@@ -130,12 +131,6 @@ export default function LancamentosPage() {
 
   function removeIncome(src: IncomeSource) {
     setDeleteTarget({ type: "income", id: src.id, label: src.name });
-  }
-
-  async function toggleIncome(src: IncomeSource, received: boolean) {
-    const mi = monthlyIncomes.find(m => m.source_id === src.id);
-    await toggleIncomeReceived(src.id, month, year, received, mi?.amount ?? resolveSourceAmount(src, month, year, sourceAmounts));
-    await loadAll();
   }
 
   // ── Ajuste de valor somente no mês selecionado ────────────────────────────────
@@ -354,66 +349,6 @@ export default function LancamentosPage() {
     { key: "cartoes", label: "Cartões", icon: CreditCard },
   ];
 
-  const cardTxsByCard = creditCards.map(card => ({
-    card,
-    txs: cardTxs.filter(t => t.card_id === card.id),
-    total: cardTxs.filter(t => t.card_id === card.id).reduce((s, t) => s + Math.abs(t.amount), 0),
-  })).filter(c => c.txs.length > 0 || true);
-
-  // Filtra contas fora do range ativo de parcelas para o mês selecionado
-  const visibleBills = fixedBills.filter(bill => {
-    if (!bill.installment_total) return true;
-    if (bill.installment_start_month == null || bill.installment_start_year == null) return true;
-    return computeInstallment(bill, month, year) !== null;
-  });
-
-  // Agrupamento: por quinzena (padrão) ou por categoria
-  const billsByGroup = (() => {
-    const sortByDueDay = (a: FixedBill, b: FixedBill) =>
-      (a.due_day ?? 99) - (b.due_day ?? 99);
-
-    if (billGroupMode === "quinzena") {
-      const periods: [string | null, string][] = [
-        ["1-15",  "1ª Quinzena"],
-        ["16-30", "2ª Quinzena"],
-        [null,    "Sem período"],
-      ];
-      return periods
-        .map(([key, label]) => ({
-          key,
-          label,
-          bills: visibleBills
-            .filter(b => (b.period ?? null) === key)
-            .sort(sortByDueDay),
-        }))
-        .filter(g => g.bills.length > 0);
-    } else {
-      // Agrupa por categoria × período
-      const groups: { key: string | null; label: string; bills: FixedBill[] }[] = [];
-      const periods: [string | null, string][] = [
-        ["1-15",  "1ª Quinzena"],
-        ["16-30", "2ª Quinzena"],
-        [null,    "Sem período"],
-      ];
-      periods.forEach(([key, periodLabel]) => {
-        const periodBills = visibleBills.filter(b => (b.period ?? null) === key);
-        const cats = Array.from(new Set(periodBills.map(b => b.category || "outros")));
-        cats.forEach(cat => {
-          const bills = periodBills
-            .filter(b => (b.category || "outros") === cat)
-            .sort(sortByDueDay);
-          if (bills.length > 0) {
-            const label = key
-              ? `${cat.charAt(0).toUpperCase() + cat.slice(1)} · ${periodLabel}`
-              : periodLabel;
-            groups.push({ key, label, bills });
-          }
-        });
-      });
-      return groups;
-    }
-  })();
-
   return (
     <div className="p-4 md:p-6 min-h-screen">
       <PageHeader title="Lançamentos" subtitle="Gerencie receitas, contas e cartões">
@@ -439,995 +374,139 @@ export default function LancamentosPage() {
         ))}
       </div>
 
-      {/* ── RECEITAS ── */}
       {tab === "receitas" && (
-        <div>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-slate-700 dark:text-slate-200 text-sm">Fontes de Renda</h2>
-            <button
-              onClick={() => { setEditIncome({}); setIncomeModal(true); }}
-              className="btn-primary flex items-center gap-1.5"
-            >
-              <Plus size={14} /> Nova Fonte
-            </button>
-          </div>
-
-          <div className="card transition-colors">
-            {incomeSources.length === 0 ? (
-              <p className="text-slate-400 dark:text-slate-500 text-sm text-center py-8">
-                Nenhuma fonte cadastrada
-              </p>
-            ) : (
-              <div className="space-y-0">
-                {incomeSources.map((src) => {
-                  const mi = monthlyIncomes.find(m => m.source_id === src.id);
-                  const defaultAmt = resolveSourceAmount(src, month, year, sourceAmounts);
-                  const effectiveAmt = mi?.amount ?? defaultAmt;
-                  const isOverridden = mi != null && mi.amount !== defaultAmt;
-                  const isSkipped = isOverridden && mi!.amount === 0;
-                  return (
-                    <div key={src.id}
-                      className="flex items-center justify-between py-3 border-b border-slate-50 dark:border-slate-700/30 last:border-0">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-8 h-8 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg flex items-center justify-center shrink-0">
-                          <TrendingUp size={14} className="text-emerald-600 dark:text-emerald-400" />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium text-slate-700 dark:text-slate-200 truncate">{src.name}</p>
-                          <p className="text-xs text-slate-400 dark:text-slate-500">
-                            {src.due_day ? `Dia ${src.due_day}` : "Sem data fixa"} · {owners.find(o => o.id === src.owner)?.name ?? src.owner}
-                          </p>
-                          {isOverridden && (
-                            <span className={`inline-flex items-center gap-1 mt-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
-                              isSkipped
-                                ? "bg-red-50 text-red-600 dark:bg-red-900/30 dark:text-red-400"
-                                : "bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400"
-                            }`}>
-                              {isSkipped ? <CalendarX size={10} /> : <CalendarClock size={10} />}
-                              {isSkipped
-                                ? `Sem recebimento em ${MONTHS[month - 1]}`
-                                : `Ajustado em ${MONTHS[month - 1]} · padrão ${formatCurrency(defaultAmt)}`}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3 shrink-0">
-                        <p className={`text-sm font-semibold ${
-                          isSkipped ? "text-red-500 line-through" : "text-emerald-700 dark:text-emerald-400"
-                        }`}>
-                          {formatCurrency(effectiveAmt)}
-                        </p>
-                        <div className="flex gap-1">
-                          <button
-                            onClick={() => openMonthIncome(src)}
-                            title={`Ajustar valor de ${MONTHS[month - 1]}`}
-                            className={`p-1.5 rounded-lg ${
-                              isOverridden
-                                ? "bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400 hover:bg-amber-100"
-                                : "hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 dark:text-slate-500"
-                            }`}
-                          >
-                            <CalendarClock size={13} />
-                          </button>
-                          <button
-                            onClick={() => { setEditIncome(src); setIncomeModal(true); }}
-                            title="Editar fonte de renda"
-                            className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg"
-                          >
-                            <Pencil size={13} className="text-slate-400 dark:text-slate-500" />
-                          </button>
-                          <button
-                            onClick={() => removeIncome(src)}
-                            title="Excluir fonte de renda"
-                            className="p-1.5 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg"
-                          >
-                            <Trash2 size={13} className="text-red-400" />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* Monthly income total */}
-          <div className="mt-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800/30 rounded-xl p-3 flex justify-between items-center transition-colors">
-            <span className="text-sm font-medium text-emerald-700 dark:text-emerald-400">Total Receitas</span>
-            <span className="text-lg font-bold text-emerald-700 dark:text-emerald-400">
-              {formatCurrency(incomeSources.reduce((s, src) => {
-                const mi = monthlyIncomes.find(m => m.source_id === src.id);
-                return s + (mi?.amount ?? resolveSourceAmount(src, month, year, sourceAmounts));
-              }, 0))}
-            </span>
-          </div>
-        </div>
+        <ReceitasTab
+          incomeSources={incomeSources}
+          monthlyIncomes={monthlyIncomes}
+          sourceAmounts={sourceAmounts}
+          owners={owners}
+          month={month}
+          year={year}
+          onAdd={() => { setEditIncome({}); setIncomeModal(true); }}
+          onEdit={(src) => { setEditIncome(src); setIncomeModal(true); }}
+          onDelete={removeIncome}
+          onAdjustMonth={openMonthIncome}
+        />
       )}
 
-      {/* ── CONTAS ── */}
       {tab === "contas" && (
-        <div>
-          <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
-            <div className="flex items-center gap-3">
-              <h2 className="font-semibold text-slate-700 dark:text-slate-200 text-sm">Contas</h2>
-              {/* Toggle: por quinzena / por categoria */}
-              <div className="flex bg-slate-100 dark:bg-slate-700/60 rounded-lg p-0.5 text-xs">
-                <button
-                  onClick={() => setBillGroupMode("quinzena")}
-                  className={`px-2.5 py-1 rounded-md font-medium transition-all ${
-                    billGroupMode === "quinzena"
-                      ? "bg-white dark:bg-slate-600 text-slate-700 dark:text-slate-100 shadow-sm"
-                      : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
-                  }`}
-                >
-                  Quinzena
-                </button>
-                <button
-                  onClick={() => setBillGroupMode("categoria")}
-                  className={`px-2.5 py-1 rounded-md font-medium transition-all ${
-                    billGroupMode === "categoria"
-                      ? "bg-white dark:bg-slate-600 text-slate-700 dark:text-slate-100 shadow-sm"
-                      : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
-                  }`}
-                >
-                  Categoria
-                </button>
-              </div>
-            </div>
-            <button
-              onClick={() => { setEditBill({}); setBillModal(true); }}
-              className="btn-primary flex items-center gap-1.5"
-            >
-              <Plus size={14} /> Nova Conta
-            </button>
-          </div>
-
-          <div className="space-y-4">
-            {billsByGroup.map(({ key, label, bills }) => (
-              <div key={label} className="card transition-colors">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
-                    {label}
-                  </h3>
-                  <button
-                    onClick={() => {
-                      setEditBill({ period: key as any });
-                      setFormErrors({});
-                      setBillModal(true);
-                    }}
-                    className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-medium text-primary-600 dark:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors"
-                    title={`Nova conta — ${label}`}
-                  >
-                    <Plus size={11} /> Nova
-                  </button>
-                </div>
-                <div className="space-y-0">
-                  {bills.map((bill) => (
-                    <div key={bill.id}
-                      className="flex items-center justify-between py-2.5 border-b border-slate-50 dark:border-slate-700/30 last:border-0">
-                      <div>
-                        <p className="text-sm font-medium text-slate-700 dark:text-slate-200">{bill.name}</p>
-                        <p className="text-xs text-slate-400 dark:text-slate-500">
-                          {bill.due_day ? `Vence dia ${bill.due_day}` : "Sem vencimento"}
-                          {(() => {
-                            if (!bill.installment_total) return null;
-                            const inst = computeInstallment(bill, month, year);
-                            if (inst) return ` · ${inst.current}/${inst.total}x`;
-                            if (bill.installment_current) return ` · ${bill.installment_current}/${bill.installment_total}x`;
-                            return null;
-                          })()}
-                          {bill.notes && ` · ${bill.notes}`}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                          {formatCurrency(bill.amount)}
-                        </span>
-                        {(() => {
-                          const catObj = categories.find(c => c.name === bill.category);
-                          const color = catObj?.color;
-                          return (
-                            <span
-                              className="text-xs font-medium px-2 py-0.5 rounded-full"
-                              style={color
-                                ? { backgroundColor: `${color}22`, color }
-                                : { backgroundColor: "rgb(239 246 255)", color: "rgb(29 78 216)" }}
-                            >
-                              {bill.category
-                                ? bill.category.charAt(0).toUpperCase() + bill.category.slice(1)
-                                : "Outros"}
-                            </span>
-                          );
-                        })()}
-                        <div className="flex gap-1">
-                          <button
-                            onClick={() => { setEditBill(bill); setBillModal(true); }}
-                            className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg"
-                          >
-                            <Pencil size={13} className="text-slate-400 dark:text-slate-500" />
-                          </button>
-                          <button
-                            onClick={() => removeBill(bill)}
-                            className="p-1.5 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg"
-                          >
-                            <Trash2 size={13} className="text-red-400" />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-700/50 flex justify-between">
-                  <span className="text-xs text-slate-500 dark:text-slate-400">Subtotal</span>
-                  <span className="text-sm font-bold text-slate-700 dark:text-slate-200">
-                    {formatCurrency(bills.reduce((s, b) => s + b.amount, 0))}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="mt-3 bg-primary-50 dark:bg-primary-900/20 border border-primary-100 dark:border-primary-800/30 rounded-xl p-3 flex justify-between items-center transition-colors">
-            <span className="text-sm font-medium text-primary-700 dark:text-primary-400">Total Contas</span>
-            <span className="text-lg font-bold text-primary-700 dark:text-primary-400">
-              {formatCurrency(visibleBills.reduce((s, b) => s + b.amount, 0))}
-            </span>
-          </div>
-        </div>
+        <ContasTab
+          fixedBills={fixedBills}
+          categories={categories}
+          month={month}
+          year={year}
+          onAdd={() => { setEditBill({}); setBillModal(true); }}
+          onAddForPeriod={(period: BillPeriod | null) => {
+            setEditBill({ period: period as any });
+            setFormErrors({});
+            setBillModal(true);
+          }}
+          onEdit={(bill) => { setEditBill(bill); setBillModal(true); }}
+          onDelete={removeBill}
+        />
       )}
 
-      {/* ── CARTÕES ── */}
       {tab === "cartoes" && (
-        <div>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-slate-700 dark:text-slate-200 text-sm">Lançamentos nos Cartões</h2>
-            <div className="flex gap-2">
-              <button
-                onClick={() => { setEditCard({}); setCardModal(true); }}
-                className="btn-secondary flex items-center gap-1.5"
-              >
-                <Plus size={14} /> Novo Cartão
-              </button>
-              <button
-                onClick={() => { setEditTx({ month, year }); setTxModal(true); }}
-                className="btn-primary flex items-center gap-1.5"
-              >
-                <Plus size={14} /> Lançar
-              </button>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            {creditCards.map((card) => {
-              const sortMode = txSort[card.id] ?? "date";
-              const rawTxs = cardTxs.filter(t => t.card_id === card.id);
-              const txs = sortMode === "categoria"
-                ? [...rawTxs].sort((a, b) => (a.category ?? "").localeCompare(b.category ?? ""))
-                : sortMode === "parcelas"
-                  ? [...rawTxs].sort((a, b) =>
-                      (a.installment_total - a.installment_current) - (b.installment_total - b.installment_current))
-                  : rawTxs;
-              // Total líquido: despesas (negativas) − créditos (positivos)
-              const total = rawTxs.reduce((s, t) => s - t.amount, 0);
-              return (
-                <div key={card.id} className="card transition-colors">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: card.color }} />
-                      <div>
-                        <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">{card.name}</p>
-                        <p className="text-xs text-slate-400 dark:text-slate-500">{card.bank} · Vence dia {card.due_day} · {owners.find(o => o.id === card.owner)?.name ?? card.owner}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {rawTxs.length > 0 && (
-                        <div className="flex bg-slate-100 dark:bg-slate-700/60 rounded-lg p-0.5 text-xs">
-                          <button
-                            onClick={() => setTxSort(p => ({ ...p, [card.id]: "date" }))}
-                            className={`px-2 py-0.5 rounded-md font-medium transition-all ${
-                              sortMode === "date"
-                                ? "bg-white dark:bg-slate-600 text-slate-700 dark:text-slate-100 shadow-sm"
-                                : "text-slate-500 dark:text-slate-400"
-                            }`}
-                          >Data</button>
-                          <button
-                            onClick={() => setTxSort(p => ({ ...p, [card.id]: "categoria" }))}
-                            className={`px-2 py-0.5 rounded-md font-medium transition-all ${
-                              sortMode === "categoria"
-                                ? "bg-white dark:bg-slate-600 text-slate-700 dark:text-slate-100 shadow-sm"
-                                : "text-slate-500 dark:text-slate-400"
-                            }`}
-                          >Categoria</button>
-                          <button
-                            onClick={() => setTxSort(p => ({ ...p, [card.id]: "parcelas" }))}
-                            className={`px-2 py-0.5 rounded-md font-medium transition-all ${
-                              sortMode === "parcelas"
-                                ? "bg-white dark:bg-slate-600 text-slate-700 dark:text-slate-100 shadow-sm"
-                                : "text-slate-500 dark:text-slate-400"
-                            }`}
-                          >Parcelas</button>
-                        </div>
-                      )}
-                      {/* Lançamento rápido: cartão já pré-selecionado */}
-                      <button
-                        onClick={() => {
-                          setEditTx({ card_id: card.id, month, year });
-                          setIsCredit(false);
-                          setPropagateCategory(false);
-                          setFormErrors({});
-                          setTxModal(true);
-                        }}
-                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors"
-                        style={{ backgroundColor: `${card.color}22`, color: card.color }}
-                        title={`Novo lançamento em ${card.name}`}
-                      >
-                        <Plus size={11} /> Lançar
-                      </button>
-                      <div className="text-right">
-                        <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{formatCurrency(total)}</p>
-                        <p className="text-xs text-slate-400 dark:text-slate-500">{rawTxs.length} lançamento{rawTxs.length !== 1 ? "s" : ""}</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {txs.length > 0 ? (
-                    <div className="space-y-0">
-                      {txs.map((tx) => {
-                        const catObj = categories.find(c => c.name === tx.category);
-                        return (
-                        <div key={tx.id}
-                          className="flex items-center justify-between py-2 border-b border-slate-50 dark:border-slate-700/30 last:border-0">
-                          <div>
-                            <p className="text-sm text-slate-700 dark:text-slate-200">{tx.description}</p>
-                            <div className="flex items-center gap-1.5 mt-0.5">
-                              {tx.installment_total > 1 && (
-                                <p className="text-xs text-slate-400 dark:text-slate-500">
-                                  {tx.installment_current}/{tx.installment_total}x
-                                </p>
-                              )}
-                              {tx.category && (
-                                <span
-                                  className="text-xs font-medium px-1.5 py-0.5 rounded-full"
-                                  style={catObj?.color
-                                    ? { backgroundColor: `${catObj.color}22`, color: catObj.color }
-                                    : { backgroundColor: "rgb(239 246 255)", color: "rgb(29 78 216)" }}
-                                >
-                                  {tx.category.charAt(0).toUpperCase() + tx.category.slice(1)}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className={`text-sm font-medium ${tx.amount > 0 ? "text-emerald-600" : "text-red-600"}`}>
-                              {tx.amount > 0 ? "+" : "-"}{formatCurrency(Math.abs(tx.amount))}
-                            </span>
-                            <button
-                              onClick={() => {
-                                setEditTx({ ...tx, amount: Math.abs(tx.amount) });
-                                setIsCredit(tx.amount > 0);
-                                setPropagateCategory(false);
-                                setTxModal(true);
-                              }}
-                              className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg"
-                            >
-                              <Pencil size={12} className="text-slate-400 dark:text-slate-500" />
-                            </button>
-                            <button
-                              onClick={() => removeTx(tx)}
-                              className="p-1.5 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg"
-                            >
-                              <Trash2 size={12} className="text-red-400" />
-                            </button>
-                          </div>
-                        </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <p className="text-xs text-slate-400 dark:text-slate-500 py-2 text-center">
-                      Nenhum lançamento neste mês
-                    </p>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        <CartoesTab
+          creditCards={creditCards}
+          cardTxs={cardTxs}
+          categories={categories}
+          owners={owners}
+          onAddCard={() => { setEditCard({}); setCardModal(true); }}
+          onAddGeneral={() => { setEditTx({ month, year }); setTxModal(true); }}
+          onQuickAdd={(cardId) => {
+            setEditTx({ card_id: cardId, month, year });
+            setIsCredit(false);
+            setPropagateCategory(false);
+            setFormErrors({});
+            setTxModal(true);
+          }}
+          onEdit={(tx) => {
+            setEditTx({ ...tx, amount: Math.abs(tx.amount) });
+            setIsCredit(tx.amount > 0);
+            setPropagateCategory(false);
+            setTxModal(true);
+          }}
+          onDelete={removeTx}
+        />
       )}
 
-      {/* ── MODAL: Nova Receita ── */}
-      <Modal open={incomeModal} onClose={() => { setIncomeModal(false); setEditIncome({}); }}
-        title={editIncome.id ? "Editar Fonte de Renda" : "Nova Fonte de Renda"}>
-        <div className="space-y-3">
-          <div>
-            <label className="label">Nome</label>
-            <input className="input" placeholder="Ex: Salário Heldem dia 15"
-              value={editIncome.name ?? ""}
-              onChange={e => setEditIncome(p => ({ ...p, name: e.target.value }))} />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="label">Valor (R$)</label>
-              <input className="input" type="number" step="0.01" placeholder="0,00"
-                value={editIncome.base_amount || ""}
-                onChange={e => setEditIncome(p => ({ ...p, base_amount: parseFloat(e.target.value) || 0 }))} />
-            </div>
-            <div>
-              <label className="label">Dia de Recebimento</label>
-              <input className="input" type="number" min="1" max="31" placeholder="15"
-                value={editIncome.due_day ?? ""}
-                onChange={e => setEditIncome(p => ({ ...p, due_day: Number(e.target.value) }))} />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="label">Responsável</label>
-              <select className="input" value={editIncome.owner ?? (owners[0]?.id ?? "casal")}
-                onChange={e => setEditIncome(p => ({ ...p, owner: e.target.value as any }))}>
-                {owners.map(o => (
-                  <option key={o.id} value={o.id}>{o.name}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="label">Tipo</label>
-              <select className="input" value={editIncome.type ?? "salary"}
-                onChange={e => setEditIncome(p => ({ ...p, type: e.target.value as any }))}>
-                <option value="salary">Salário</option>
-                <option value="extra">Extra</option>
-                <option value="other">Outro</option>
-              </select>
-            </div>
-          </div>
+      <IncomeModal
+        open={incomeModal}
+        onClose={() => { setIncomeModal(false); setEditIncome({}); }}
+        value={editIncome}
+        onChange={(patch) => setEditIncome(p => ({ ...p, ...patch }))}
+        onSave={saveIncome}
+        saving={loading}
+        owners={owners}
+        month={month}
+        year={year}
+      />
 
-          {/* Receita avulsa (somente um mês) */}
-          <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-700/50 rounded-lg px-3 py-2.5">
-            <div>
-              <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Somente este mês</p>
-              <p className="text-xs text-slate-400 dark:text-slate-500">Receita avulsa, não recorrente</p>
-            </div>
-            <Toggle
-              checked={editIncome.is_recurring === false}
-              onChange={v => setEditIncome(p => ({
-                ...p,
-                is_recurring: !v,
-                one_time_month: !v ? (p.one_time_month ?? month) : null,
-                one_time_year:  !v ? (p.one_time_year  ?? year)  : null,
-              }))}
-            />
-          </div>
+      <MonthIncomeModal
+        open={monthIncomeModal}
+        onClose={() => { setMonthIncomeModal(false); setMonthIncomeSrc(null); setFormErrors({}); }}
+        source={monthIncomeSrc}
+        month={month}
+        year={year}
+        monthlyIncomes={monthlyIncomes}
+        sourceAmounts={sourceAmounts}
+        skip={monthIncomeSkip}
+        onSkipChange={setMonthIncomeSkip}
+        amount={monthIncomeAmount}
+        onAmountChange={setMonthIncomeAmount}
+        amountError={formErrors.monthAmount}
+        onSave={saveMonthIncome}
+        onReset={resetMonthIncome}
+        saving={loading}
+      />
 
-          {/* Mês/Ano da receita avulsa */}
-          {editIncome.is_recurring === false && (
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="label">Mês</label>
-                <select className="input" value={editIncome.one_time_month ?? month}
-                  onChange={e => setEditIncome(p => ({ ...p, one_time_month: Number(e.target.value) }))}>
-                  {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="label">Ano</label>
-                <input className="input" type="number" min="2020" max="2035"
-                  value={editIncome.one_time_year ?? year}
-                  onChange={e => setEditIncome(p => ({ ...p, one_time_year: Number(e.target.value) }))} />
-              </div>
-            </div>
-          )}
+      <BillModal
+        open={billModal}
+        onClose={() => { setBillModal(false); setEditBill({}); setFormErrors({}); }}
+        value={editBill}
+        onChange={(patch) => setEditBill(p => ({ ...p, ...patch }))}
+        onSave={saveBill}
+        saving={loading}
+        categories={categories}
+        month={month}
+        year={year}
+      />
 
-          <div className="flex gap-2 pt-2">
-            <button onClick={() => { setIncomeModal(false); setEditIncome({}); }}
-              className="btn-secondary flex-1">Cancelar</button>
-            <button onClick={saveIncome} disabled={loading}
-              className="btn-primary flex-1">Salvar</button>
-          </div>
-        </div>
-      </Modal>
+      <CardModal
+        open={cardModal}
+        onClose={() => { setCardModal(false); setEditCard({}); }}
+        value={editCard}
+        onChange={(patch) => setEditCard(p => ({ ...p, ...patch }))}
+        onSave={saveCard}
+        saving={loading}
+        owners={owners}
+      />
 
-      {/* ── MODAL: Ajustar valor somente neste mês ── */}
-      <Modal open={monthIncomeModal} onClose={() => { setMonthIncomeModal(false); setMonthIncomeSrc(null); setFormErrors({}); }}
-        title={`Ajustar em ${MONTHS[month - 1]} ${year}`}>
-        {monthIncomeSrc && (() => {
-          const mi = monthlyIncomes.find(m => m.source_id === monthIncomeSrc.id);
-          const defaultAmt = resolveSourceAmount(monthIncomeSrc, month, year, sourceAmounts);
-          const hasOverride = mi != null && mi.amount !== defaultAmt;
-          return (
-            <div className="space-y-3">
-              <div className="bg-slate-50 dark:bg-slate-700/40 rounded-lg px-3 py-2.5">
-                <p className="text-sm font-medium text-slate-700 dark:text-slate-200">{monthIncomeSrc.name}</p>
-                <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
-                  Altera o valor <b>somente em {MONTHS[month - 1]}/{year}</b>. Os demais meses mantêm o valor padrão de {formatCurrency(defaultAmt)}.
-                </p>
-              </div>
+      <TransactionModal
+        open={txModal}
+        onClose={() => { setTxModal(false); setEditTx({}); setIsCredit(false); setPropagateCategory(false); setFormErrors({}); }}
+        value={editTx}
+        onChange={(patch) => setEditTx(p => ({ ...p, ...patch }))}
+        onSave={saveTx}
+        saving={loading}
+        creditCards={creditCards}
+        categories={categories}
+        txSuggestions={txSuggestions}
+        isCredit={isCredit}
+        onIsCreditChange={setIsCredit}
+        propagateCategory={propagateCategory}
+        onPropagateCategoryChange={setPropagateCategory}
+        month={month}
+        year={year}
+      />
 
-              {/* Sem recebimento neste mês */}
-              <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-700/50 rounded-lg px-3 py-2.5">
-                <div>
-                  <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Sem recebimento neste mês</p>
-                  <p className="text-xs text-slate-400 dark:text-slate-500">Zera esta renda só em {MONTHS[month - 1]}</p>
-                </div>
-                <Toggle
-                  checked={monthIncomeSkip}
-                  onChange={v => setMonthIncomeSkip(v)}
-                />
-              </div>
-
-              {/* Valor customizado (oculto quando "sem recebimento") */}
-              {!monthIncomeSkip && (
-                <div>
-                  <label className="label">Valor neste mês (R$)</label>
-                  <input className="input" type="number" step="0.01" placeholder="0,00"
-                    value={monthIncomeAmount}
-                    onChange={e => setMonthIncomeAmount(e.target.value)} />
-                  {formErrors.monthAmount && (
-                    <p className="text-xs text-red-500 mt-1">{formErrors.monthAmount}</p>
-                  )}
-                </div>
-              )}
-
-              {hasOverride && (
-                <button onClick={resetMonthIncome} disabled={loading}
-                  className="w-full flex items-center justify-center gap-1.5 text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-primary-600 dark:hover:text-primary-400 py-1.5">
-                  <RotateCcw size={13} /> Voltar ao valor padrão ({formatCurrency(defaultAmt)})
-                </button>
-              )}
-
-              <div className="flex gap-2 pt-2">
-                <button onClick={() => { setMonthIncomeModal(false); setMonthIncomeSrc(null); setFormErrors({}); }}
-                  className="btn-secondary flex-1">Cancelar</button>
-                <button onClick={saveMonthIncome} disabled={loading}
-                  className="btn-primary flex-1">Salvar</button>
-              </div>
-            </div>
-          );
-        })()}
-      </Modal>
-
-      {/* ── MODAL: Nova Conta ── */}
-      <Modal open={billModal} onClose={() => { setBillModal(false); setEditBill({}); setFormErrors({}); }}
-        title={editBill.id ? "Editar Conta" : "Nova Conta"}>
-        <div className="space-y-3">
-          {/* Badge de quinzena pré-selecionada */}
-          {!editBill.id && editBill.period && (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary-50 dark:bg-primary-900/20 border border-primary-100 dark:border-primary-800/30">
-              <div className="w-2 h-2 rounded-full bg-primary-500 dark:bg-primary-400 shrink-0" />
-              <span className="text-xs font-semibold text-primary-700 dark:text-primary-400">
-                {editBill.period === "1-15" ? "1ª Quinzena" : "2ª Quinzena"}
-              </span>
-              <span className="text-xs text-slate-400 dark:text-slate-500 ml-auto">pré-selecionada</span>
-            </div>
-          )}
-          <div>
-            <label className="label">Nome da Conta</label>
-            <input className="input" placeholder="Ex: Condomínio"
-              value={editBill.name ?? ""}
-              onChange={e => setEditBill(p => ({ ...p, name: e.target.value }))} />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="label">Valor da Parcela (R$)</label>
-              <input className="input" type="number" step="0.01" placeholder="0,00"
-                value={editBill.amount || ""}
-                onChange={e => setEditBill(p => ({ ...p, amount: parseFloat(e.target.value) || 0 }))} />
-            </div>
-            <div>
-              <label className="label">Dia de Vencimento</label>
-              <input className="input" type="number" min="1" max="31" placeholder="10"
-                value={editBill.due_day ?? ""}
-                onChange={e => {
-                  const day = Number(e.target.value) || null;
-                  const autoPeriod = day ? (day <= 15 ? "1-15" : "16-30") : undefined;
-                  setEditBill(p => ({ ...p, due_day: day, ...(autoPeriod ? { period: autoPeriod as any } : {}) }));
-                }} />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            {/* Categoria customizável */}
-            <div>
-              <label className="label">Categoria</label>
-              <select className="input" value={editBill.category ?? "essencial"}
-                onChange={e => setEditBill(p => ({ ...p, category: e.target.value }))}>
-                {categories.length === 0
-                  ? <><option value="essencial">Essencial</option><option value="outros">Outros</option></>
-                  : categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)
-                }
-              </select>
-            </div>
-            <div>
-              <label className="label">Período</label>
-              <select className="input" value={editBill.period ?? ""}
-                onChange={e => setEditBill(p => ({ ...p, period: e.target.value as any || null }))}>
-                <option value="">Sem período</option>
-                <option value="1-15">1ª Quinzena</option>
-                <option value="16-30">2ª Quinzena</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Parcelas: total + parcela atual do mês selecionado */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="label">Total de Parcelas</label>
-              <input className="input" type="number" min="1" placeholder="Sem parcelas"
-                value={editBill.installment_total ?? ""}
-                onChange={e => setEditBill(p => ({ ...p, installment_total: Number(e.target.value) || null, installment_current: null }))} />
-            </div>
-            <div>
-              <label className="label">Parcela atual</label>
-              <input className="input" type="number" min="1"
-                max={editBill.installment_total ?? undefined}
-                placeholder="Ex: 3"
-                disabled={!editBill.installment_total}
-                value={editBill.installment_current ?? ""}
-                onChange={e => setEditBill(p => ({ ...p, installment_current: Number(e.target.value) || null }))} />
-            </div>
-          </div>
-
-          {/* Obs separado */}
-          <div>
-            <label className="label">Obs</label>
-            <input className="input" placeholder="Notas"
-              value={editBill.notes ?? ""}
-              onChange={e => setEditBill(p => ({ ...p, notes: e.target.value }))} />
-          </div>
-
-          {/* Preview auto-calculado das parcelas */}
-          {(editBill.installment_total ?? 0) > 0 && (editBill.installment_current ?? 0) > 0 && (() => {
-            const n   = editBill.installment_total!;
-            const cur = editBill.installment_current!;
-            const monthIdx = year * 12 + month - 1;
-            const startIdx = monthIdx - (cur - 1);
-            const sm  = (startIdx % 12) + 1;
-            const sy  = Math.floor(startIdx / 12);
-            const end = installmentEndDate(sm, sy, n);
-            const remaining = n - cur + 1;
-            return (
-              <div className="bg-slate-50 dark:bg-slate-700/50 rounded-lg px-3 py-2 space-y-0.5">
-                <p className="text-xs font-medium text-slate-700 dark:text-slate-200">
-                  Parcela {cur}/{n} · {formatCurrency(editBill.amount ?? 0)}/mês · falta {remaining}x
-                </p>
-                <p className="text-xs text-slate-400 dark:text-slate-500">
-                  Início: {MONTHS[sm - 1]}/{sy} · Término: {MONTHS[end.month - 1]}/{end.year}
-                </p>
-              </div>
-            );
-          })()}
-
-          <div className="flex gap-2 pt-2">
-            <button onClick={() => { setBillModal(false); setEditBill({}); }}
-              className="btn-secondary flex-1">Cancelar</button>
-            <button onClick={saveBill} disabled={loading}
-              className="btn-primary flex-1">Salvar</button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* ── MODAL: Novo Cartão ── */}
-      <Modal open={cardModal} onClose={() => { setCardModal(false); setEditCard({}); }}
-        title={editCard.id ? "Editar Cartão" : "Novo Cartão de Crédito"}>
-        <div className="space-y-3">
-          <div>
-            <label className="label">Nome do Cartão</label>
-            <input className="input" placeholder="Ex: NUBANK HELDEM"
-              value={editCard.name ?? ""}
-              onChange={e => setEditCard(p => ({ ...p, name: e.target.value }))} />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="label">Banco</label>
-              <input className="input" placeholder="Ex: Nubank"
-                value={editCard.bank ?? ""}
-                onChange={e => setEditCard(p => ({ ...p, bank: e.target.value }))} />
-            </div>
-            <div>
-              <label className="label">Dia Vencimento</label>
-              <input className="input" type="number" min="1" max="31"
-                value={editCard.due_day ?? ""}
-                onChange={e => setEditCard(p => ({ ...p, due_day: Number(e.target.value) }))} />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="label">Titular</label>
-              <select className="input" value={editCard.owner ?? (owners[0]?.id ?? "heldem")}
-                onChange={e => setEditCard(p => ({ ...p, owner: e.target.value as any }))}>
-                {owners.map(o => (
-                  <option key={o.id} value={o.id}>{o.name}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="label">Cor</label>
-              <input className="input" type="color"
-                value={editCard.color ?? "#6366f1"}
-                onChange={e => setEditCard(p => ({ ...p, color: e.target.value }))} />
-            </div>
-          </div>
-          <div className="flex gap-2 pt-2">
-            <button onClick={() => { setCardModal(false); setEditCard({}); }}
-              className="btn-secondary flex-1">Cancelar</button>
-            <button onClick={saveCard} disabled={loading}
-              className="btn-primary flex-1">Salvar</button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* ── MODAL: Lançamento Cartão ── */}
-      <Modal open={txModal} onClose={() => { setTxModal(false); setEditTx({}); setIsCredit(false); setPropagateCategory(false); setFormErrors({}); }}
-        title={editTx.id ? "Editar Lançamento" : "Novo Lançamento no Cartão"}>
-        <div className="space-y-3">
-
-          {/* Badge de cartão pré-selecionado (via lançamento rápido) */}
-          {!editTx.id && editTx.card_id && (() => {
-            const preCard = creditCards.find(c => c.id === editTx.card_id);
-            if (!preCard) return null;
-            return (
-              <div
-                className="flex items-center gap-2 px-3 py-2 rounded-lg border"
-                style={{ backgroundColor: `${preCard.color}18`, borderColor: `${preCard.color}40` }}
-              >
-                <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: preCard.color }} />
-                <span className="text-xs font-semibold" style={{ color: preCard.color }}>
-                  {preCard.name}
-                </span>
-                <span className="text-xs text-slate-400 dark:text-slate-500 ml-auto">cartão pré-selecionado</span>
-              </div>
-            );
-          })()}
-
-          {/* Cartão — só mostra para novo lançamento */}
-          {!editTx.id && (
-            <div>
-              <label className="label">Cartão</label>
-              <select className="input" value={editTx.card_id ?? ""}
-                onChange={e => setEditTx(p => ({ ...p, card_id: e.target.value }))}>
-                <option value="">Selecione...</option>
-                {[...creditCards].sort((a, b) => a.name.localeCompare(b.name, "pt-BR")).map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {/* Descrição + Categoria */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="label">Descrição</label>
-              <DescriptionAutocomplete
-                value={editTx.description ?? ""}
-                onChange={v => setEditTx(p => ({ ...p, description: v }))}
-                onSelect={s => setEditTx(p => ({
-                  ...p,
-                  description: s.description,
-                  // Preenche categoria e valor típico automaticamente
-                  category: s.category ?? p.category,
-                  ...(s.amount > 0 && !p.amount ? { amount: s.amount } : {}),
-                }))}
-                suggestions={txSuggestions}
-                categories={categories}
-              />
-            </div>
-            <div>
-              <label className="label">Categoria</label>
-              <select className="input" value={editTx.category ?? ""}
-                onChange={e => setEditTx(p => ({ ...p, category: e.target.value || null }))}>
-                <option value="">Sem categoria</option>
-                {categories.map(c => (
-                  <option key={c.id} value={c.name}>{c.name}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {/* Crédito / Estorno — apenas novo lançamento */}
-          {!editTx.id && (
-            <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-700/50 rounded-lg px-3 py-2.5">
-              <div>
-                <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Crédito / Estorno</p>
-                <p className="text-xs text-slate-400 dark:text-slate-500">Ative se for reembolso ou saldo positivo no cartão</p>
-              </div>
-              <Toggle checked={isCredit} onChange={v => setIsCredit(v)} />
-            </div>
-          )}
-
-          {/* Valor + Parcelas */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="label">
-                {(editTx.installment_total ?? 1) > 1 ? "Valor da Parcela (R$)" : "Valor (R$)"}
-              </label>
-              <input className="input" type="number" step="0.01" placeholder="0,00"
-                value={editTx.amount || ""}
-                onChange={e => setEditTx(p => ({ ...p, amount: parseFloat(e.target.value) || 0 }))} />
-            </div>
-            {/* Parcelas — só para novo */}
-            {!editTx.id && (
-              <div>
-                <label className="label">Total de Parcelas</label>
-                <input className="input" type="number" min="1" max="360" placeholder="1"
-                  value={editTx.installment_total ?? 1}
-                  onChange={e => setEditTx(p => ({ ...p, installment_total: Number(e.target.value) || 1 }))} />
-              </div>
-            )}
-          </div>
-
-          {/* Parcela inicial — só quando parcelado e novo */}
-          {!editTx.id && (editTx.installment_total ?? 1) > 1 && (
-            <div>
-              <label className="label">Parcela atual (qual é este mês?)</label>
-              <input className="input" type="number" min="1" max={editTx.installment_total ?? 1}
-                placeholder="1"
-                value={editTx.installment_current ?? 1}
-                onChange={e => setEditTx(p => ({ ...p, installment_current: Number(e.target.value) || 1 }))} />
-              <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
-                Preencha se a compra já começou em meses anteriores (ex: compra de 12x, hoje é a 3ª parcela)
-              </p>
-            </div>
-          )}
-
-          {/* Mês/Ano de início — sempre para novo lançamento */}
-          {!editTx.id && (
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="label">Mês início</label>
-                <select className="input" value={editTx.month ?? month}
-                  onChange={e => setEditTx(p => ({ ...p, month: Number(e.target.value) }))}>
-                  {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="label">Ano início</label>
-                <input className="input" type="number" min="2020" max="2035"
-                  value={editTx.year ?? year}
-                  onChange={e => setEditTx(p => ({ ...p, year: Number(e.target.value) }))} />
-              </div>
-            </div>
-          )}
-
-          {/* Preview de parcelamento (novo lançamento com > 1 parcela) */}
-          {!editTx.id && (editTx.installment_total ?? 1) > 1 && Number(editTx.amount) > 0 && (() => {
-            const n         = editTx.installment_total!;
-            const startInst = Math.max(1, Math.min(editTx.installment_current ?? 1, n));
-            const startM    = editTx.month ?? month;
-            const startY    = editTx.year  ?? year;
-            const valor     = Number(editTx.amount);
-            const remaining = n - startInst + 1;
-            const totalIdx  = (startY * 12 + startM - 1) + (remaining - 1);
-            const endMonth  = (totalIdx % 12) + 1;
-            const endYear   = Math.floor(totalIdx / 12);
-            return (
-              <div className="bg-primary-50 dark:bg-primary-900/20 border border-primary-100 dark:border-primary-800/30 rounded-lg p-3 text-xs space-y-0.5">
-                <p className="font-medium text-primary-700 dark:text-primary-400">
-                  {formatCurrency(valor)}/parcela × {remaining} {remaining !== n ? `meses restantes (de ${n}x)` : "meses"}
-                  {" "}= <span className="font-bold">{formatCurrency(valor * remaining)}</span>
-                </p>
-                <p className="text-slate-500 dark:text-slate-400">
-                  De {MONTHS[startM - 1]}/{startY} ({startInst}/{n}) até {MONTHS[endMonth - 1]}/{endYear} ({n}/{n})
-                </p>
-              </div>
-            );
-          })()}
-
-          {/* Info de parcela no modo edição */}
-          {editTx.id && (editTx.installment_total ?? 1) > 1 && (
-            <div className="bg-slate-50 dark:bg-slate-700/50 rounded-lg px-3 py-2 space-y-0.5">
-              <p className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                Parcela {editTx.installment_current}/{editTx.installment_total}
-              </p>
-              <p className="text-xs text-slate-400 dark:text-slate-500">
-                O valor será aplicado nesta e em todas as parcelas seguintes.
-                A categoria só propaga se o toggle abaixo estiver ativo.
-              </p>
-            </div>
-          )}
-
-          {/* Propagar categoria — modo edição, parcelado */}
-          {editTx.id && (editTx.installment_total ?? 1) > 1 && (
-            <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-700/50 rounded-lg px-3 py-2.5">
-              <div>
-                <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Aplicar aos meses seguintes</p>
-                <p className="text-xs text-slate-400 dark:text-slate-500">Propaga a categoria para todas as parcelas seguintes</p>
-              </div>
-              <Toggle checked={propagateCategory} onChange={v => setPropagateCategory(v)} />
-            </div>
-          )}
-
-          <div className="flex gap-2 pt-2">
-            <button onClick={() => { setTxModal(false); setEditTx({}); }}
-              className="btn-secondary flex-1">Cancelar</button>
-            <button onClick={saveTx} disabled={loading}
-              className="btn-primary flex-1">Salvar</button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* ── Modal de confirmação de exclusão ───────────────────────────────── */}
-      <Modal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} title="Remover lançamento" size="sm">
-        {deleteTarget && (
-          <div className="space-y-4">
-            {/* Descrição */}
-            <p className="text-sm text-slate-600 dark:text-slate-300">
-              {deleteTarget.type === "income" && (
-                <>Remover a receita <strong>"{deleteTarget.label}"</strong>?</>
-              )}
-              {deleteTarget.type === "bill" && (
-                <><strong>"{deleteTarget.bill.name}"</strong> é uma conta recorrente. Como deseja remover?</>
-              )}
-              {deleteTarget.type === "tx" && deleteTarget.tx.installment_total > 1 && (
-                <>Parcela <strong>{deleteTarget.tx.installment_current}/{deleteTarget.tx.installment_total}</strong> de <strong>"{deleteTarget.tx.description}"</strong>. O que deseja fazer?</>
-              )}
-              {deleteTarget.type === "tx" && deleteTarget.tx.installment_total <= 1 && (
-                <>Remover o lançamento <strong>"{deleteTarget.tx.description}"</strong>?</>
-              )}
-            </p>
-
-            {/* Opções */}
-            <div className="flex flex-col gap-2">
-              {deleteTarget.type === "bill" && (
-                <>
-                  <button
-                    onClick={() => confirmDelete("this")}
-                    disabled={loading}
-                    className="w-full text-left px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
-                  >
-                    <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Só este mês</p>
-                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">A conta continua nos meses seguintes</p>
-                  </button>
-                  <button
-                    onClick={() => confirmDelete("permanent")}
-                    disabled={loading}
-                    className="w-full text-left px-4 py-3 rounded-xl border border-red-200 dark:border-red-800/50 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                  >
-                    <p className="text-sm font-medium text-red-600 dark:text-red-400">Remover permanentemente</p>
-                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Remove a conta de todos os meses</p>
-                  </button>
-                </>
-              )}
-
-              {deleteTarget.type === "tx" && deleteTarget.tx.installment_total > 1 && (
-                <>
-                  <button
-                    onClick={() => confirmDelete("this")}
-                    disabled={loading}
-                    className="w-full text-left px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
-                  >
-                    <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Só esta parcela</p>
-                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">As parcelas seguintes continuam normalmente</p>
-                  </button>
-                  <button
-                    onClick={() => confirmDelete("following")}
-                    disabled={loading}
-                    className="w-full text-left px-4 py-3 rounded-xl border border-red-200 dark:border-red-800/50 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                  >
-                    <p className="text-sm font-medium text-red-600 dark:text-red-400">Esta e as parcelas seguintes</p>
-                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Remove da parcela {deleteTarget.tx.installment_current} até a {deleteTarget.tx.installment_total}</p>
-                  </button>
-                </>
-              )}
-
-              {((deleteTarget.type === "tx" && deleteTarget.tx.installment_total <= 1) || deleteTarget.type === "income") && (
-                <button
-                  onClick={() => confirmDelete("this")}
-                  disabled={loading}
-                  className="w-full text-left px-4 py-3 rounded-xl border border-red-200 dark:border-red-800/50 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                >
-                  <p className="text-sm font-medium text-red-600 dark:text-red-400">Confirmar remoção</p>
-                </button>
-              )}
-
-              <button
-                onClick={() => setDeleteTarget(null)}
-                className="w-full px-4 py-2.5 rounded-xl text-sm text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors"
-              >
-                Cancelar
-              </button>
-            </div>
-          </div>
-        )}
-      </Modal>
+      <DeleteConfirmModal
+        target={deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={confirmDelete}
+        saving={loading}
+      />
     </div>
   );
 }

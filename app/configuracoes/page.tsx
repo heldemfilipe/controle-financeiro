@@ -1,25 +1,35 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-  TrendingUp, CreditCard, FileText, Plus, Pencil, Trash2,
-  Save, AlertCircle, Check, User, Banknote, Users,
-  ShieldCheck, ShieldX, RotateCcw, Eye, EyeOff, Lock,
-  UserPlus, History,
-} from "lucide-react";
+import { TrendingUp, CreditCard, FileText, UserPlus, Users, Check } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { Modal } from "@/components/ui/Modal";
-import { Toggle } from "@/components/ui/Toggle";
 import {
   getIncomeSources, upsertIncomeSource, deleteIncomeSource,
   getCreditCards, upsertCreditCard,
   getFixedBills, upsertFixedBill, deleteFixedBill,
   getIncomeSourceAmounts, upsertIncomeSourceAmount, deleteIncomeSourceAmount,
 } from "@/lib/queries";
-import { formatCurrency, getMonthName } from "@/lib/utils";
+import { formatCurrency } from "@/lib/utils";
 import { createSupabaseBrowser } from "@/lib/supabase-browser";
 import { getOwners, saveOwners, slugify, DEFAULT_OWNERS, type Owner } from "@/lib/owners";
 import type { IncomeSource, IncomeSourceAmount, CreditCard as CreditCardType, FixedBill, AppUser } from "@/types";
+
+import { RendaTab } from "@/components/configuracoes/tabs/RendaTab";
+import { CartoesTab } from "@/components/configuracoes/tabs/CartoesTab";
+import { ContasTab } from "@/components/configuracoes/tabs/ContasTab";
+import { IntegrantesTab } from "@/components/configuracoes/tabs/IntegrantesTab";
+import { UsuariosTab } from "@/components/configuracoes/tabs/UsuariosTab";
+
+import { SourceModal } from "@/components/configuracoes/SourceModal";
+import { CardModal } from "@/components/configuracoes/CardModal";
+import { BillModal } from "@/components/configuracoes/BillModal";
+import { NewUserModal } from "@/components/configuracoes/NewUserModal";
+import { EditUserModal } from "@/components/configuracoes/EditUserModal";
+import { ChangePasswordModal } from "@/components/configuracoes/ChangePasswordModal";
+import { ResetPasswordModal } from "@/components/configuracoes/ResetPasswordModal";
+import { BanUserModal } from "@/components/configuracoes/BanUserModal";
+import { HistoryModal, type NewAmountForm } from "@/components/configuracoes/HistoryModal";
+import { DeleteConfirmModal, type DeleteTarget } from "@/components/configuracoes/DeleteConfirmModal";
 
 type Tab = "renda" | "cartoes" | "contas" | "integrantes" | "usuarios";
 
@@ -40,13 +50,13 @@ export default function ConfiguracoesPage() {
   const [editCard, setEditCard] = useState<Partial<CreditCardType>>({});
   const [editBill, setEditBill] = useState<Partial<FixedBill>>({});
 
-  const [deleteConfirm, setDeleteConfirm] = useState<{ type: string; id: string; name: string } | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<DeleteTarget | null>(null);
 
   // ── Histórico de valores de receita ─────────────────────────────────────────
   const [historyModal, setHistoryModal] = useState<IncomeSource | null>(null);
   const [historyAmounts, setHistoryAmounts] = useState<IncomeSourceAmount[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
-  const [newAmount, setNewAmount] = useState({ month: new Date().getMonth() + 1, year: new Date().getFullYear(), amount: "", notes: "" });
+  const [newAmount, setNewAmount] = useState<NewAmountForm>({ month: new Date().getMonth() + 1, year: new Date().getFullYear(), amount: "", notes: "" });
   const [historySaving, setHistorySaving] = useState(false);
 
   // ── Integrantes ─────────────────────────────────────────────────────────────
@@ -124,6 +134,10 @@ export default function ConfiguracoesPage() {
     }
   }
 
+  function closeSourceModal() {
+    setSourceModal(false); setEditSource({}); setSaveError("");
+  }
+
   async function handleDeleteSource(id: string) {
     await deleteIncomeSource(id);
     setDeleteConfirm(null);
@@ -181,6 +195,10 @@ export default function ConfiguracoesPage() {
     }
   }
 
+  function closeCardModal() {
+    setCardModal(false); setEditCard({}); setSaveError("");
+  }
+
   async function toggleCardActive(card: CreditCardType) {
     await upsertCreditCard({ ...card, active: !card.active });
     await loadAll();
@@ -199,6 +217,10 @@ export default function ConfiguracoesPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  function closeBillModal() {
+    setBillModal(false); setEditBill({}); setSaveError("");
   }
 
   async function handleDeleteBill(id: string) {
@@ -425,1021 +447,168 @@ export default function ConfiguracoesPage() {
         ))}
       </div>
 
-      {/* ── RENDA ── */}
       {tab === "renda" && (
-        <div className="max-w-2xl">
-          <div className="flex justify-between items-center mb-3">
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Configure suas fontes de renda fixas. Elas serão usadas como base para cada mês.
-            </p>
-            <button onClick={() => { setEditSource({}); setSourceModal(true); }}
-              className="btn-primary flex items-center gap-1.5 shrink-0">
-              <Plus size={14} /> Adicionar
-            </button>
-          </div>
-
-          <div className="space-y-2">
-            {sources.filter(s => s.is_recurring !== false).map((src) => (
-              <div key={src.id}
-                className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/50 rounded-xl p-4 flex items-center justify-between hover:border-slate-200 dark:hover:border-slate-600 transition-colors">
-                <div className="flex items-center gap-3 min-w-0">
-                  {(() => {
-                    const o = owners.find(ow => ow.id === src.owner);
-                    const color = o?.color ?? "#94a3b8";
-                    const ownerLabel = o?.name ?? src.owner;
-                    return (
-                      <>
-                        <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-                          style={{ backgroundColor: `${color}22` }}>
-                          <User size={15} style={{ color }} />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="font-semibold text-slate-700 dark:text-slate-200 text-sm truncate">{src.name}</p>
-                          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                            <span className="text-xs px-1.5 py-0.5 rounded-full font-medium"
-                              style={{ backgroundColor: `${color}18`, color }}>
-                              {ownerLabel}
-                            </span>
-                            <span className="text-xs bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-1.5 py-0.5 rounded-full">
-                              {src.type === "salary" ? "Salário" : src.type === "extra" ? "Extra" : "Outro"}
-                            </span>
-                            {src.due_day && (
-                              <span className="text-xs text-slate-400 dark:text-slate-500">Dia {src.due_day}</span>
-                            )}
-                          </div>
-                        </div>
-                      </>
-                    );
-                  })()}
-                </div>
-                <div className="flex items-center gap-3 shrink-0">
-                  <p className="text-lg font-bold text-emerald-700 dark:text-emerald-400">{formatCurrency(src.base_amount)}</p>
-                  <div className="flex gap-1">
-                    <button onClick={() => openHistory(src)}
-                      title="Histórico de valores"
-                      className="p-2 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-lg transition-colors">
-                      <History size={14} className="text-amber-500" />
-                    </button>
-                    <button onClick={() => { setEditSource(src); setSourceModal(true); }}
-                      className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
-                      <Pencil size={14} className="text-slate-400 dark:text-slate-500" />
-                    </button>
-                    <button
-                      onClick={() => setDeleteConfirm({ type: "source", id: src.id, name: src.name })}
-                      className="p-2 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors">
-                      <Trash2 size={14} className="text-red-400" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
-
-            {sources.filter(s => s.is_recurring !== false).length === 0 && (
-              <div className="bg-white dark:bg-slate-800 border-2 border-dashed border-slate-200 dark:border-slate-600 rounded-xl p-8 text-center transition-colors">
-                <Banknote size={28} className="text-slate-300 dark:text-slate-600 mx-auto mb-2" />
-                <p className="text-slate-500 dark:text-slate-400 text-sm mb-3">Nenhuma fonte de renda cadastrada</p>
-                <button onClick={() => { setEditSource({}); setSourceModal(true); }}
-                  className="btn-primary">Adicionar Fonte</button>
-              </div>
-            )}
-          </div>
-
-          {sources.filter(s => s.is_recurring !== false).length > 0 && (
-            <div className="mt-4 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800/30 rounded-xl p-3 flex justify-between transition-colors">
-              <span className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">Renda Mensal Total</span>
-              <span className="text-lg font-bold text-emerald-700 dark:text-emerald-400">{formatCurrency(totalMonthlyIncome)}</span>
-            </div>
-          )}
-        </div>
+        <RendaTab
+          sources={sources}
+          owners={owners}
+          totalMonthlyIncome={totalMonthlyIncome}
+          onAdd={() => { setEditSource({}); setSourceModal(true); }}
+          onEdit={(src) => { setEditSource(src); setSourceModal(true); }}
+          onDelete={(src) => setDeleteConfirm({ type: "source", id: src.id, name: src.name })}
+          onHistory={openHistory}
+        />
       )}
 
-      {/* ── CARTÕES ── */}
       {tab === "cartoes" && (
-        <div className="max-w-3xl">
-          <div className="flex justify-between items-center mb-3">
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Cartões de crédito cadastrados. O dia de vencimento é usado para alertas de pagamento.
-            </p>
-            <button onClick={() => { setEditCard({}); setCardModal(true); }}
-              className="btn-primary flex items-center gap-1.5 shrink-0">
-              <Plus size={14} /> Novo Cartão
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-            {cards.map((card) => (
-              <div key={card.id}
-                className={`bg-white dark:bg-slate-800 border rounded-xl p-4 transition-all ${
-                  card.active
-                    ? "border-slate-100 dark:border-slate-700/50 hover:border-slate-200 dark:hover:border-slate-600"
-                    : "border-slate-100 dark:border-slate-700/50 opacity-60"
-                }`}>
-                <div
-                  className="h-14 rounded-lg mb-3 flex items-center justify-between px-3"
-                  style={{ background: `linear-gradient(135deg, ${card.color}cc, ${card.color})` }}
-                >
-                  <div>
-                    <p className="text-white font-bold text-sm">{card.name}</p>
-                    <p className="text-white/70 text-xs">{card.bank}</p>
-                  </div>
-                  <CreditCard size={20} className="text-white/70" />
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      {(() => {
-                        const o = owners.find(ow => ow.id === card.owner);
-                        const color = o?.color ?? "#94a3b8";
-                        const ownerLabel = o?.name ?? card.owner;
-                        return (
-                          <span className="text-xs px-1.5 py-0.5 rounded-full font-medium"
-                            style={{ backgroundColor: `${color}18`, color }}>
-                            {ownerLabel}
-                          </span>
-                        );
-                      })()}
-                      <span className="text-xs bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-1.5 py-0.5 rounded-full font-medium">
-                        Vence dia {card.due_day}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1.5 mt-1">
-                      <span className="text-xs text-slate-400 dark:text-slate-500">Ativo</span>
-                      <Toggle size="sm" checked={card.active} onChange={() => toggleCardActive(card)} />
-                    </div>
-                  </div>
-                  <div className="flex gap-1">
-                    <button onClick={() => { setEditCard(card); setCardModal(true); }}
-                      className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
-                      <Pencil size={14} className="text-slate-400 dark:text-slate-500" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
-
-            {cards.length === 0 && (
-              <div className="col-span-2 bg-white dark:bg-slate-800 border-2 border-dashed border-slate-200 dark:border-slate-600 rounded-xl p-8 text-center transition-colors">
-                <CreditCard size={28} className="text-slate-300 dark:text-slate-600 mx-auto mb-2" />
-                <p className="text-slate-500 dark:text-slate-400 text-sm mb-3">Nenhum cartão cadastrado</p>
-                <button onClick={() => { setEditCard({}); setCardModal(true); }}
-                  className="btn-primary">Adicionar Cartão</button>
-              </div>
-            )}
-          </div>
-        </div>
+        <CartoesTab
+          cards={cards}
+          owners={owners}
+          onAdd={() => { setEditCard({}); setCardModal(true); }}
+          onEdit={(card) => { setEditCard(card); setCardModal(true); }}
+          onToggleActive={toggleCardActive}
+        />
       )}
 
-      {/* ── CONTAS FIXAS ── */}
       {tab === "contas" && (
-        <div className="max-w-3xl">
-          <div className="flex justify-between items-center mb-3">
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Contas recorrentes mensais. Organize por período e categoria para melhor controle.
-            </p>
-            <button onClick={() => { setEditBill({}); setBillModal(true); }}
-              className="btn-primary flex items-center gap-1.5 shrink-0">
-              <Plus size={14} /> Nova Conta
-            </button>
-          </div>
-
-          <div className="space-y-4">
-            {billGroups.map(({ key, label, bills: groupBills }) => (
-              <div key={key} className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/50 rounded-xl overflow-hidden transition-colors">
-                <div className="px-4 py-2.5 bg-slate-50 dark:bg-slate-700/40 border-b border-slate-100 dark:border-slate-700/50">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wide">{label}</h3>
-                    <span className="text-xs text-slate-500 dark:text-slate-400 font-semibold">
-                      {formatCurrency(groupBills.filter(b => b.active).reduce((s, b) => s + b.amount, 0))}
-                    </span>
-                  </div>
-                </div>
-                <div>
-                  {groupBills.map((bill) => (
-                    <div key={bill.id}
-                      className={`flex items-center justify-between px-4 py-3 border-b border-slate-50 dark:border-slate-700/30 last:border-0 ${
-                        !bill.active ? "opacity-50" : ""
-                      }`}>
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
-                          bill.category === "essencial"
-                            ? "bg-primary-50 dark:bg-primary-900/20"
-                            : "bg-amber-50 dark:bg-amber-900/20"
-                        }`}>
-                          <FileText size={13} className={
-                            bill.category === "essencial"
-                              ? "text-primary-600 dark:text-primary-400"
-                              : "text-amber-600 dark:text-amber-400"
-                          } />
-                        </div>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-1.5">
-                            <p className="text-sm font-medium text-slate-700 dark:text-slate-200 truncate">{bill.name}</p>
-                            {!bill.active && (
-                              <span className="text-xs bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-1.5 py-0.5 rounded-full shrink-0">
-                                inativa
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                            {bill.due_day && (
-                              <span className="text-xs text-slate-400 dark:text-slate-500">Dia {bill.due_day}</span>
-                            )}
-                            {bill.installment_current && (
-                              <span className="text-xs text-slate-400 dark:text-slate-500">
-                                · Parcela {bill.installment_current}/{bill.installment_total}
-                              </span>
-                            )}
-                            {bill.notes && (
-                              <span className="text-xs text-slate-400 dark:text-slate-500">· {bill.notes}</span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 md:gap-3 shrink-0">
-                        <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{formatCurrency(bill.amount)}</p>
-                        <Toggle size="sm" checked={bill.active} onChange={() => toggleBillActive(bill)} />
-                        <div className="flex gap-1">
-                          <button onClick={() => { setEditBill(bill); setBillModal(true); }}
-                            className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
-                            <Pencil size={13} className="text-slate-400 dark:text-slate-500" />
-                          </button>
-                          <button
-                            onClick={() => setDeleteConfirm({ type: "bill", id: bill.id, name: bill.name })}
-                            className="p-1.5 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors">
-                            <Trash2 size={13} className="text-red-400" />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-
-            {listBills.length === 0 && (
-              <div className="bg-white dark:bg-slate-800 border-2 border-dashed border-slate-200 dark:border-slate-600 rounded-xl p-8 text-center transition-colors">
-                <FileText size={28} className="text-slate-300 dark:text-slate-600 mx-auto mb-2" />
-                <p className="text-slate-500 dark:text-slate-400 text-sm mb-3">Nenhuma conta fixa cadastrada</p>
-                <button onClick={() => { setEditBill({}); setBillModal(true); }}
-                  className="btn-primary">Adicionar Conta</button>
-              </div>
-            )}
-          </div>
-
-          {listBills.length > 0 && (
-            <div className="mt-4 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800/30 rounded-xl p-3 flex justify-between transition-colors">
-              <span className="text-sm font-semibold text-red-700 dark:text-red-400">Total Mensal (contas ativas)</span>
-              <span className="text-lg font-bold text-red-700 dark:text-red-400">{formatCurrency(totalMonthlyBills)}</span>
-            </div>
-          )}
-        </div>
+        <ContasTab
+          billGroups={billGroups}
+          listBills={listBills}
+          totalMonthlyBills={totalMonthlyBills}
+          onAdd={() => { setEditBill({}); setBillModal(true); }}
+          onEdit={(bill) => { setEditBill(bill); setBillModal(true); }}
+          onDelete={(bill) => setDeleteConfirm({ type: "bill", id: bill.id, name: bill.name })}
+          onToggleActive={toggleBillActive}
+        />
       )}
 
-      {/* ── INTEGRANTES ── */}
       {tab === "integrantes" && (
-        <div className="max-w-xl">
-          <div className="mb-4">
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Cadastre os integrantes da família. Eles serão usados como "titular" nos cartões e receitas.
-              Os dados ficam salvos localmente neste dispositivo.
-            </p>
-          </div>
-
-          {/* Lista de integrantes */}
-          <div className="space-y-2 mb-5">
-            {owners.map((owner) => (
-              <div key={owner.id}
-                className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/50 rounded-xl p-3 flex items-center justify-between hover:border-slate-200 dark:hover:border-slate-600 transition-colors">
-                {editingOwner?.id === owner.id ? (
-                  /* Edit inline */
-                  <div className="flex items-center gap-2 flex-1 mr-2">
-                    <input
-                      type="color"
-                      value={editingOwner.color}
-                      onChange={e => setEditingOwner(o => o ? { ...o, color: e.target.value } : o)}
-                      className="h-8 w-8 rounded border border-slate-200 dark:border-slate-600 cursor-pointer shrink-0"
-                    />
-                    <input
-                      className="input flex-1 py-1.5 text-sm"
-                      value={editingOwner.name}
-                      onChange={e => setEditingOwner(o => o ? { ...o, name: e.target.value } : o)}
-                      onKeyDown={e => e.key === "Enter" && updateOwner()}
-                      autoFocus
-                    />
-                    <button onClick={updateOwner}
-                      className="p-1.5 rounded-lg bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 hover:bg-primary-100 transition-colors shrink-0">
-                      <Check size={14} />
-                    </button>
-                    <button onClick={() => setEditingOwner(null)}
-                      className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 transition-colors shrink-0">
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
-                        style={{ backgroundColor: `${owner.color}22` }}>
-                        <User size={15} style={{ color: owner.color }} />
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">{owner.name}</p>
-                        <p className="text-xs text-slate-400 dark:text-slate-500 font-mono">{owner.id}</p>
-                      </div>
-                      <span className="w-3 h-3 rounded-full shrink-0 border border-white/40 shadow-sm"
-                        style={{ backgroundColor: owner.color }} />
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button onClick={() => setEditingOwner(owner)}
-                        className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
-                        <Pencil size={13} className="text-slate-400 dark:text-slate-500" />
-                      </button>
-                      {owner.id !== "casal" && owners.length > 1 && (
-                        <button onClick={() => removeOwner(owner.id)}
-                          className="p-1.5 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors">
-                          <Trash2 size={13} className="text-red-400" />
-                        </button>
-                      )}
-                    </div>
-                  </>
-                )}
-              </div>
-            ))}
-          </div>
-
-          {/* Adicionar novo */}
-          <div className="bg-white dark:bg-slate-800 border border-dashed border-slate-200 dark:border-slate-600 rounded-xl p-4">
-            <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-3 uppercase tracking-wide">Novo Integrante</p>
-            <div className="flex items-end gap-2">
-              <div className="shrink-0">
-                <label className="label">Cor</label>
-                <input type="color" value={newOwner.color}
-                  onChange={e => setNewOwner(p => ({ ...p, color: e.target.value }))}
-                  className="h-9 w-10 rounded border border-slate-200 dark:border-slate-600 cursor-pointer" />
-              </div>
-              <div className="flex-1">
-                <label className="label">Nome</label>
-                <input className="input" placeholder="Ex: Maria, Pedro, Família..."
-                  value={newOwner.name}
-                  onChange={e => { setNewOwner(p => ({ ...p, name: e.target.value })); setOwnerError(""); }}
-                  onKeyDown={e => e.key === "Enter" && addOwner()} />
-              </div>
-              <button onClick={addOwner}
-                className="btn-primary shrink-0 flex items-center gap-1.5">
-                <Plus size={14} /> Adicionar
-              </button>
-            </div>
-            {ownerError && (
-              <p className="text-xs text-red-500 mt-2 flex items-center gap-1">
-                <AlertCircle size={12} /> {ownerError}
-              </p>
-            )}
-          </div>
-
-          {/* Reset */}
-          <div className="mt-4 flex justify-end">
-            <button onClick={resetOwners}
-              className="text-xs text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 flex items-center gap-1 transition-colors">
-              <RotateCcw size={12} /> Restaurar padrões (Heldem, Vitoria, Família)
-            </button>
-          </div>
-        </div>
+        <IntegrantesTab
+          owners={owners}
+          newOwner={newOwner}
+          onNewOwnerChange={(patch) => {
+            setNewOwner(p => ({ ...p, ...patch }));
+            if (patch.name !== undefined) setOwnerError("");
+          }}
+          editingOwner={editingOwner}
+          onEditingOwnerChange={setEditingOwner}
+          onStartEdit={setEditingOwner}
+          onCancelEdit={() => setEditingOwner(null)}
+          ownerError={ownerError}
+          onAdd={addOwner}
+          onUpdate={updateOwner}
+          onRemove={removeOwner}
+          onReset={resetOwners}
+        />
       )}
 
-      {/* ── USUÁRIOS ── */}
       {tab === "usuarios" && isAdmin && (
-        <div className="max-w-3xl">
-          <div className="flex justify-between items-center mb-3">
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Gerencie quem tem acesso ao app. Apenas admins podem criar, editar e desativar usuários.
-            </p>
-            <button onClick={() => { setNewUser({ email: "", password: "", display_name: "", role: "user" }); setUserModal(true); }}
-              className="btn-primary flex items-center gap-1.5 shrink-0">
-              <Plus size={14} /> Novo Usuário
-            </button>
-          </div>
-
-          {usersLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="w-6 h-6 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {users.map((u) => (
-                <div key={u.id}
-                  className={`bg-white dark:bg-slate-800 border rounded-xl p-4 transition-all ${
-                    u.banned
-                      ? "border-red-100 dark:border-red-900/30 opacity-70"
-                      : "border-slate-100 dark:border-slate-700/50 hover:border-slate-200 dark:hover:border-slate-600"
-                  }`}>
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                        u.role === "admin"
-                          ? "bg-primary-50 dark:bg-primary-900/20"
-                          : "bg-slate-100 dark:bg-slate-700"
-                      }`}>
-                        {u.role === "admin"
-                          ? <ShieldCheck size={16} className="text-primary-600 dark:text-primary-400" />
-                          : <User size={16} className="text-slate-500 dark:text-slate-400" />
-                        }
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <p className="font-semibold text-slate-700 dark:text-slate-200 text-sm">
-                            {u.display_name || u.email}
-                          </p>
-                          <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
-                            u.role === "admin"
-                              ? "bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-400"
-                              : "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300"
-                          }`}>
-                            {u.role === "admin" ? "Admin" : "Usuário"}
-                          </span>
-                          {u.banned && (
-                            <span className="text-xs px-1.5 py-0.5 rounded-full bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400">
-                              Desativado
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5 truncate">{u.email}</p>
-                        <p className="text-xs text-slate-400 dark:text-slate-500">
-                          Criado em {new Date(u.created_at).toLocaleDateString("pt-BR")}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button
-                        onClick={() => { setEditingUser(u); setEditUserData({ display_name: u.display_name, role: u.role }); setEditUserModal(true); }}
-                        title="Editar"
-                        className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
-                        <Pencil size={14} className="text-slate-400 dark:text-slate-500" />
-                      </button>
-                      <button
-                        onClick={() => { setChangePasswordUser(u); setNewPassword(""); setShowChangePassword(false); }}
-                        title="Definir nova senha"
-                        className="p-2 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors">
-                        <Lock size={14} className="text-primary-500" />
-                      </button>
-                      <button
-                        onClick={() => setResetConfirm(u)}
-                        title="Enviar e-mail de reset"
-                        className="p-2 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-lg transition-colors">
-                        <RotateCcw size={14} className="text-amber-500" />
-                      </button>
-                      <button
-                        onClick={() => setBanConfirm(u)}
-                        title={u.banned ? "Ativar usuário" : "Desativar usuário"}
-                        className={`p-2 rounded-lg transition-colors ${
-                          u.banned
-                            ? "hover:bg-emerald-50 dark:hover:bg-emerald-900/20"
-                            : "hover:bg-red-50 dark:hover:bg-red-900/20"
-                        }`}>
-                        {u.banned
-                          ? <ShieldCheck size={14} className="text-emerald-500" />
-                          : <ShieldX size={14} className="text-red-400" />
-                        }
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-
-              {users.length === 0 && (
-                <div className="bg-white dark:bg-slate-800 border-2 border-dashed border-slate-200 dark:border-slate-600 rounded-xl p-8 text-center transition-colors">
-                  <Users size={28} className="text-slate-300 dark:text-slate-600 mx-auto mb-2" />
-                  <p className="text-slate-500 dark:text-slate-400 text-sm mb-3">Nenhum usuário encontrado</p>
-                  <button onClick={() => { setNewUser({ email: "", password: "", display_name: "", role: "user" }); setUserModal(true); }}
-                    className="btn-primary">Criar Usuário</button>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+        <UsuariosTab
+          users={users}
+          usersLoading={usersLoading}
+          onAdd={() => { setNewUser({ email: "", password: "", display_name: "", role: "user" }); setUserModal(true); }}
+          onEdit={(u) => { setEditingUser(u); setEditUserData({ display_name: u.display_name, role: u.role }); setEditUserModal(true); }}
+          onChangePassword={(u) => { setChangePasswordUser(u); setNewPassword(""); setShowChangePassword(false); }}
+          onResetPassword={setResetConfirm}
+          onBan={setBanConfirm}
+        />
       )}
 
-      {/* ── MODAL: Fonte de Renda ── */}
-      <Modal open={sourceModal} onClose={() => { setSourceModal(false); setEditSource({}); }}
-        title={editSource.id ? "Editar Fonte de Renda" : "Nova Fonte de Renda"}>
-        <div className="space-y-3">
-          <div>
-            <label className="label">Nome</label>
-            <input className="input" placeholder="Ex: Salário Pessoa 1"
-              value={editSource.name ?? ""}
-              onChange={e => setEditSource(p => ({ ...p, name: e.target.value }))} />
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="label">Valor Base (R$)</label>
-              <input className="input" type="number" step="0.01"
-                value={editSource.base_amount ?? ""}
-                onChange={e => setEditSource(p => ({ ...p, base_amount: Number(e.target.value) }))} />
-            </div>
-            <div>
-              <label className="label">Dia de Recebimento</label>
-              <input className="input" type="number" min="1" max="31" placeholder="15"
-                value={editSource.due_day ?? ""}
-                onChange={e => setEditSource(p => ({ ...p, due_day: Number(e.target.value) || null }))} />
-            </div>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="label">Responsável</label>
-              <select className="input" value={editSource.owner ?? (owners[0]?.id ?? "casal")}
-                onChange={e => setEditSource(p => ({ ...p, owner: e.target.value as any }))}>
-                {owners.map(o => (
-                  <option key={o.id} value={o.id}>{o.name}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="label">Tipo</label>
-              <select className="input" value={editSource.type ?? "salary"}
-                onChange={e => setEditSource(p => ({ ...p, type: e.target.value as any }))}>
-                <option value="salary">Salário</option>
-                <option value="extra">Extra</option>
-                <option value="other">Outro</option>
-              </select>
-            </div>
-          </div>
-          {saveError && (
-            <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800/30 text-xs text-red-600 dark:text-red-400">
-              <AlertCircle size={13} className="shrink-0 mt-0.5" />
-              <span>{saveError}</span>
-            </div>
-          )}
-          <div className="flex gap-2 pt-2">
-            <button onClick={() => { setSourceModal(false); setEditSource({}); setSaveError(""); }} className="btn-secondary flex-1">Cancelar</button>
-            <button onClick={saveSource} disabled={loading} className="btn-primary flex-1 flex items-center justify-center gap-2">
-              {loading ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> : <Save size={14} />}
-              Salvar
-            </button>
-          </div>
-        </div>
-      </Modal>
+      <SourceModal
+        open={sourceModal}
+        onClose={closeSourceModal}
+        value={editSource}
+        onChange={(patch) => setEditSource(p => ({ ...p, ...patch }))}
+        onSave={saveSource}
+        saving={loading}
+        error={saveError}
+        owners={owners}
+      />
 
-      {/* ── MODAL: Cartão ── */}
-      <Modal open={cardModal} onClose={() => { setCardModal(false); setEditCard({}); setSaveError(""); }}
-        title={editCard.id ? "Editar Cartão" : "Novo Cartão de Crédito"}>
-        <div className="space-y-3">
-          <div
-            className="h-16 rounded-xl flex items-center justify-between px-4"
-            style={{ background: `linear-gradient(135deg, ${(editCard.color ?? "#6366f1") + "cc"}, ${editCard.color ?? "#6366f1"})` }}
-          >
-            <div>
-              <p className="text-white font-bold text-sm">{editCard.name || "Nome do Cartão"}</p>
-              <p className="text-white/70 text-xs">{editCard.bank || "Banco"}</p>
-            </div>
-            <CreditCard size={20} className="text-white/70" />
-          </div>
+      <CardModal
+        open={cardModal}
+        onClose={closeCardModal}
+        value={editCard}
+        onChange={(patch) => setEditCard(p => ({ ...p, ...patch }))}
+        onSave={saveCard}
+        saving={loading}
+        error={saveError}
+        owners={owners}
+      />
 
-          <div>
-            <label className="label">Nome do Cartão</label>
-            <input className="input" placeholder="Ex: NUBANK P1"
-              value={editCard.name ?? ""}
-              onChange={e => setEditCard(p => ({ ...p, name: e.target.value.toUpperCase() }))} />
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="label">Banco</label>
-              <input className="input" placeholder="Ex: Nubank"
-                value={editCard.bank ?? ""}
-                onChange={e => setEditCard(p => ({ ...p, bank: e.target.value }))} />
-            </div>
-            <div>
-              <label className="label">Dia Vencimento</label>
-              <input className="input" type="number" min="1" max="31"
-                value={editCard.due_day ?? ""}
-                onChange={e => setEditCard(p => ({ ...p, due_day: Number(e.target.value) }))} />
-            </div>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="label">Titular</label>
-              <select className="input" value={editCard.owner ?? (owners[0]?.id ?? "heldem")}
-                onChange={e => setEditCard(p => ({ ...p, owner: e.target.value as any }))}>
-                {owners.map(o => (
-                  <option key={o.id} value={o.id}>{o.name}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="label">Cor do Cartão</label>
-              <div className="flex items-center gap-2">
-                <input className="h-9 w-12 rounded border border-slate-200 dark:border-slate-600 cursor-pointer" type="color"
-                  value={editCard.color ?? "#6366f1"}
-                  onChange={e => setEditCard(p => ({ ...p, color: e.target.value }))} />
-                <input className="input flex-1" placeholder="#6366f1"
-                  value={editCard.color ?? "#6366f1"}
-                  onChange={e => setEditCard(p => ({ ...p, color: e.target.value }))} />
-              </div>
-              <div className="flex gap-1.5 mt-1.5">
-                {["#6366f1", "#8b5cf6", "#ec4899", "#ef4444", "#f59e0b", "#10b981", "#06b6d4"].map(c => (
-                  <button key={c} onClick={() => setEditCard(p => ({ ...p, color: c }))}
-                    className="w-5 h-5 rounded-full border-2 transition-all"
-                    style={{
-                      backgroundColor: c,
-                      borderColor: editCard.color === c ? "white" : "transparent",
-                      boxShadow: editCard.color === c ? `0 0 0 2px ${c}` : "none",
-                    }} />
-                ))}
-              </div>
-            </div>
-          </div>
-          {saveError && (
-            <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800/30 text-xs text-red-600 dark:text-red-400">
-              <AlertCircle size={13} className="shrink-0 mt-0.5" />
-              <span>{saveError}</span>
-            </div>
-          )}
-          <div className="flex gap-2 pt-2">
-            <button onClick={() => { setCardModal(false); setEditCard({}); setSaveError(""); }} className="btn-secondary flex-1">Cancelar</button>
-            <button onClick={saveCard} disabled={loading} className="btn-primary flex-1 flex items-center justify-center gap-2">
-              {loading ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> : <Save size={14} />}
-              Salvar
-            </button>
-          </div>
-        </div>
-      </Modal>
+      <BillModal
+        open={billModal}
+        onClose={closeBillModal}
+        value={editBill}
+        onChange={(patch) => setEditBill(p => ({ ...p, ...patch }))}
+        onSave={saveBill}
+        saving={loading}
+        error={saveError}
+      />
 
-      {/* ── MODAL: Conta Fixa ── */}
-      <Modal open={billModal} onClose={() => { setBillModal(false); setEditBill({}); setSaveError(""); }}
-        title={editBill.id ? "Editar Conta Fixa" : "Nova Conta Fixa"} size="lg">
-        <div className="space-y-3">
-          <div>
-            <label className="label">Nome da Conta</label>
-            <input className="input" placeholder="Ex: Condomínio"
-              value={editBill.name ?? ""}
-              onChange={e => setEditBill(p => ({ ...p, name: e.target.value }))} />
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="label">Valor da Parcela (R$)</label>
-              <input className="input" type="number" step="0.01"
-                value={editBill.amount ?? ""}
-                onChange={e => setEditBill(p => ({ ...p, amount: Number(e.target.value) }))} />
-            </div>
-            <div>
-              <label className="label">Dia de Vencimento</label>
-              <input className="input" type="number" min="1" max="31"
-                value={editBill.due_day ?? ""}
-                onChange={e => {
-                  const day = Number(e.target.value) || null;
-                  const autoPeriod = day ? (day <= 15 ? "1-15" : "16-30") : undefined;
-                  setEditBill(p => ({ ...p, due_day: day, ...(autoPeriod ? { period: autoPeriod as any } : {}) }));
-                }} />
-            </div>
-          </div>
+      <NewUserModal
+        open={userModal}
+        onClose={() => setUserModal(false)}
+        value={newUser}
+        onChange={(patch) => setNewUser(p => ({ ...p, ...patch }))}
+        onSave={createUser}
+        saving={loading}
+        showPassword={showNewPassword}
+        onToggleShowPassword={() => setShowNewPassword(v => !v)}
+      />
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="label">Categoria</label>
-              <select className="input" value={editBill.category ?? "essencial"}
-                onChange={e => setEditBill(p => ({ ...p, category: e.target.value as any }))}>
-                <option value="essencial">Essencial</option>
-                <option value="outros">Outros</option>
-              </select>
-            </div>
-            <div>
-              <label className="label">Período do Mês</label>
-              <select className="input" value={editBill.period ?? ""}
-                onChange={e => setEditBill(p => ({ ...p, period: e.target.value as any || null }))}>
-                <option value="">Sem período</option>
-                <option value="1-15">1 a 15</option>
-                <option value="16-30">16 a 30</option>
-              </select>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="label">Parcela Atual</label>
-              <input className="input" type="number" placeholder="—"
-                value={editBill.installment_current ?? ""}
-                onChange={e => setEditBill(p => ({ ...p, installment_current: Number(e.target.value) || null }))} />
-            </div>
-            <div>
-              <label className="label">Total Parcelas</label>
-              <input className="input" type="number" placeholder="—"
-                value={editBill.installment_total ?? ""}
-                onChange={e => setEditBill(p => ({ ...p, installment_total: Number(e.target.value) || null }))} />
-            </div>
-            <div>
-              <label className="label">Observações</label>
-              <input className="input" placeholder="Notas"
-                value={editBill.notes ?? ""}
-                onChange={e => setEditBill(p => ({ ...p, notes: e.target.value }))} />
-            </div>
-          </div>
+      <EditUserModal
+        open={editUserModal}
+        onClose={() => { setEditUserModal(false); setEditingUser(null); }}
+        editingUser={editingUser}
+        value={editUserData}
+        onChange={(patch) => setEditUserData(p => ({ ...p, ...patch }))}
+        onSave={updateUser}
+        saving={loading}
+      />
 
-          {saveError && (
-            <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800/30 text-xs text-red-600 dark:text-red-400">
-              <AlertCircle size={13} className="shrink-0 mt-0.5" />
-              <span>{saveError}</span>
-            </div>
-          )}
-          <div className="flex gap-2 pt-2">
-            <button onClick={() => { setBillModal(false); setEditBill({}); setSaveError(""); }} className="btn-secondary flex-1">Cancelar</button>
-            <button onClick={saveBill} disabled={loading} className="btn-primary flex-1 flex items-center justify-center gap-2">
-              {loading ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> : <Save size={14} />}
-              Salvar
-            </button>
-          </div>
-        </div>
-      </Modal>
+      <ChangePasswordModal
+        user={changePasswordUser}
+        onClose={() => { setChangePasswordUser(null); setNewPassword(""); }}
+        newPassword={newPassword}
+        onNewPasswordChange={setNewPassword}
+        onSave={changePassword}
+        saving={loading}
+        showPassword={showChangePassword}
+        onToggleShowPassword={() => setShowChangePassword(v => !v)}
+      />
 
-      {/* ── MODAL: Novo Usuário ── */}
-      <Modal open={userModal} onClose={() => setUserModal(false)}
-        title="Criar Novo Usuário">
-        <div className="space-y-3">
-          <div>
-            <label className="label">E-mail</label>
-            <input className="input" type="email" placeholder="usuario@email.com"
-              value={newUser.email}
-              onChange={e => setNewUser(p => ({ ...p, email: e.target.value }))} />
-          </div>
-          <div>
-            <label className="label">Senha</label>
-            <div className="relative">
-              <input className="input pr-10" type={showNewPassword ? "text" : "password"} placeholder="Mínimo 6 caracteres"
-                value={newUser.password}
-                onChange={e => setNewUser(p => ({ ...p, password: e.target.value }))} />
-              <button type="button" tabIndex={-1}
-                onClick={() => setShowNewPassword(v => !v)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors">
-                {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="label">Nome (opcional)</label>
-              <input className="input" placeholder="Ex: João"
-                value={newUser.display_name}
-                onChange={e => setNewUser(p => ({ ...p, display_name: e.target.value }))} />
-            </div>
-            <div>
-              <label className="label">Permissão</label>
-              <select className="input" value={newUser.role}
-                onChange={e => setNewUser(p => ({ ...p, role: e.target.value as any }))}>
-                <option value="user">Usuário comum</option>
-                <option value="admin">Administrador</option>
-              </select>
-            </div>
-          </div>
-          <div className="bg-slate-50 dark:bg-slate-700/50 rounded-lg p-3 text-xs text-slate-500 dark:text-slate-400 flex items-start gap-2">
-            <Lock size={13} className="mt-0.5 shrink-0" />
-            O usuário poderá alterar a própria senha após o primeiro acesso.
-          </div>
-          <div className="flex gap-2 pt-2">
-            <button onClick={() => setUserModal(false)} className="btn-secondary flex-1">Cancelar</button>
-            <button onClick={createUser} disabled={loading || !newUser.email || !newUser.password}
-              className="btn-primary flex-1 flex items-center justify-center gap-2">
-              <Users size={14} /> Criar Usuário
-            </button>
-          </div>
-        </div>
-      </Modal>
+      <ResetPasswordModal
+        user={resetConfirm}
+        onClose={() => setResetConfirm(null)}
+        onConfirm={sendResetPassword}
+      />
 
-      {/* ── MODAL: Editar Usuário ── */}
-      <Modal open={editUserModal} onClose={() => { setEditUserModal(false); setEditingUser(null); }}
-        title="Editar Usuário">
-        <div className="space-y-3">
-          <div>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
-              E-mail: <span className="font-medium text-slate-700 dark:text-slate-300">{editingUser?.email}</span>
-            </p>
-          </div>
-          <div>
-            <label className="label">Nome de exibição</label>
-            <input className="input" placeholder="Ex: João"
-              value={editUserData.display_name}
-              onChange={e => setEditUserData(p => ({ ...p, display_name: e.target.value }))} />
-          </div>
-          <div>
-            <label className="label">Permissão</label>
-            <select className="input" value={editUserData.role}
-              onChange={e => setEditUserData(p => ({ ...p, role: e.target.value as any }))}>
-              <option value="user">Usuário comum</option>
-              <option value="admin">Administrador</option>
-            </select>
-          </div>
-          <div className="flex gap-2 pt-2">
-            <button onClick={() => { setEditUserModal(false); setEditingUser(null); }} className="btn-secondary flex-1">Cancelar</button>
-            <button onClick={updateUser} disabled={loading} className="btn-primary flex-1 flex items-center justify-center gap-2">
-              <Save size={14} /> Salvar
-            </button>
-          </div>
-        </div>
-      </Modal>
+      <BanUserModal
+        user={banConfirm}
+        onClose={() => setBanConfirm(null)}
+        onConfirm={toggleBanUser}
+      />
 
-      {/* ── MODAL: Alterar Senha ── */}
-      <Modal open={!!changePasswordUser} onClose={() => { setChangePasswordUser(null); setNewPassword(""); }} title="Definir Nova Senha" size="sm">
-        <div className="space-y-4">
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            Usuário: <span className="font-medium text-slate-700 dark:text-slate-300">{changePasswordUser?.email}</span>
-          </p>
-          <div>
-            <label className="label">Nova Senha</label>
-            <div className="relative">
-              <input
-                className="input pr-10"
-                type={showChangePassword ? "text" : "password"}
-                placeholder="Mínimo 6 caracteres"
-                value={newPassword}
-                onChange={e => setNewPassword(e.target.value)}
-                autoFocus
-              />
-              <button type="button" tabIndex={-1}
-                onClick={() => setShowChangePassword(v => !v)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors">
-                {showChangePassword ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <button onClick={() => { setChangePasswordUser(null); setNewPassword(""); }} className="btn-secondary flex-1">Cancelar</button>
-            <button onClick={changePassword} disabled={loading || newPassword.length < 6}
-              className="btn-primary flex-1 flex items-center justify-center gap-2">
-              <Lock size={14} /> Salvar Senha
-            </button>
-          </div>
-        </div>
-      </Modal>
+      <HistoryModal
+        source={historyModal}
+        onClose={() => setHistoryModal(null)}
+        amounts={historyAmounts}
+        loading={historyLoading}
+        newAmount={newAmount}
+        onNewAmountChange={(patch) => setNewAmount(p => ({ ...p, ...patch }))}
+        onSaveEntry={saveHistoryEntry}
+        saving={historySaving}
+        onRemoveEntry={removeHistoryEntry}
+      />
 
-      {/* ── MODAL: Reset Senha ── */}
-      <Modal open={!!resetConfirm} onClose={() => setResetConfirm(null)} title="Redefinir Senha" size="sm">
-        <div className="text-center space-y-4">
-          <div className="w-12 h-12 bg-amber-50 dark:bg-amber-900/20 rounded-full flex items-center justify-center mx-auto">
-            <RotateCcw size={22} className="text-amber-500" />
-          </div>
-          <div>
-            <p className="text-sm text-slate-600 dark:text-slate-300">Enviar e-mail de redefinição de senha para</p>
-            <p className="font-bold text-slate-800 dark:text-slate-100 mt-0.5">{resetConfirm?.email}</p>
-          </div>
-          <div className="flex gap-2">
-            <button onClick={() => setResetConfirm(null)} className="btn-secondary flex-1">Cancelar</button>
-            <button onClick={() => resetConfirm && sendResetPassword(resetConfirm)}
-              className="flex-1 bg-amber-500 hover:bg-amber-600 text-white font-medium px-4 py-2 rounded-lg transition-colors text-sm flex items-center justify-center gap-2">
-              <RotateCcw size={14} /> Enviar
-            </button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* ── MODAL: Ban/Unban ── */}
-      <Modal open={!!banConfirm} onClose={() => setBanConfirm(null)} title={banConfirm?.banned ? "Ativar Usuário" : "Desativar Usuário"} size="sm">
-        <div className="text-center space-y-4">
-          <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto ${
-            banConfirm?.banned ? "bg-emerald-50 dark:bg-emerald-900/20" : "bg-red-50 dark:bg-red-900/20"
-          }`}>
-            {banConfirm?.banned
-              ? <ShieldCheck size={22} className="text-emerald-500" />
-              : <ShieldX size={22} className="text-red-500" />
-            }
-          </div>
-          <div>
-            <p className="text-sm text-slate-600 dark:text-slate-300">
-              {banConfirm?.banned ? "Reativar acesso de" : "Bloquear acesso de"}
-            </p>
-            <p className="font-bold text-slate-800 dark:text-slate-100 mt-0.5">{banConfirm?.email}</p>
-          </div>
-          <div className="flex gap-2">
-            <button onClick={() => setBanConfirm(null)} className="btn-secondary flex-1">Cancelar</button>
-            <button onClick={() => banConfirm && toggleBanUser(banConfirm)}
-              className={`flex-1 text-white font-medium px-4 py-2 rounded-lg transition-colors text-sm flex items-center justify-center gap-2 ${
-                banConfirm?.banned
-                  ? "bg-emerald-600 hover:bg-emerald-700"
-                  : "bg-red-600 hover:bg-red-700"
-              }`}>
-              {banConfirm?.banned ? <ShieldCheck size={14} /> : <ShieldX size={14} />}
-              {banConfirm?.banned ? "Ativar" : "Desativar"}
-            </button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* ── MODAL: Histórico de Valores da Receita ── */}
-      <Modal open={!!historyModal} onClose={() => setHistoryModal(null)}
-        title={`Histórico — ${historyModal?.name ?? ""}`} size="lg">
-        <div className="space-y-4">
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            Registre mudanças de valor (aumento ou redução) com a data de início. O sistema usará
-            o valor mais recente cadastrado para cada mês.
-            Valor base: <span className="font-semibold text-slate-700 dark:text-slate-200">{historyModal ? formatCurrency(historyModal.base_amount) : ""}</span>
-          </p>
-
-          {/* Lista de entradas existentes */}
-          {historyLoading ? (
-            <div className="flex justify-center py-4">
-              <div className="w-5 h-5 border-2 border-primary-500/30 border-t-primary-500 rounded-full animate-spin" />
-            </div>
-          ) : historyAmounts.length === 0 ? (
-            <p className="text-xs text-slate-400 dark:text-slate-500 text-center py-2">
-              Nenhuma alteração registrada. O valor base é sempre usado.
-            </p>
-          ) : (
-            <div className="space-y-1.5">
-              {historyAmounts.map(a => (
-                <div key={a.id}
-                  className="flex items-center justify-between bg-slate-50 dark:bg-slate-700/40 rounded-lg px-3 py-2">
-                  <div>
-                    <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                      {formatCurrency(a.amount)}
-                    </span>
-                    <span className="text-xs text-slate-400 dark:text-slate-500 ml-2">
-                      a partir de {getMonthName(a.effective_month)}/{a.effective_year}
-                    </span>
-                    {a.notes && (
-                      <span className="text-xs text-slate-400 dark:text-slate-500 ml-2">· {a.notes}</span>
-                    )}
-                  </div>
-                  <button onClick={() => removeHistoryEntry(a.id)}
-                    className="p-1.5 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors">
-                    <Trash2 size={13} className="text-red-400" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Formulário para adicionar nova entrada */}
-          <div className="border-t border-slate-100 dark:border-slate-700/50 pt-4">
-            <p className="text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wide mb-3">
-              Adicionar Alteração
-            </p>
-            <div className="grid grid-cols-3 gap-2 mb-2">
-              <div>
-                <label className="label">Mês</label>
-                <select className="input" value={newAmount.month}
-                  onChange={e => setNewAmount(p => ({ ...p, month: Number(e.target.value) }))}>
-                  {Array.from({ length: 12 }, (_, i) => (
-                    <option key={i + 1} value={i + 1}>{getMonthName(i + 1)}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="label">Ano</label>
-                <input className="input" type="number" min="2020" max="2099"
-                  value={newAmount.year}
-                  onChange={e => setNewAmount(p => ({ ...p, year: Number(e.target.value) }))} />
-              </div>
-              <div>
-                <label className="label">Novo Valor (R$)</label>
-                <input className="input" type="number" step="0.01" placeholder="0,00"
-                  value={newAmount.amount}
-                  onChange={e => setNewAmount(p => ({ ...p, amount: e.target.value }))} />
-              </div>
-            </div>
-            <div className="mb-3">
-              <label className="label">Observação (opcional)</label>
-              <input className="input" placeholder="Ex: Reajuste anual, promoção..."
-                value={newAmount.notes}
-                onChange={e => setNewAmount(p => ({ ...p, notes: e.target.value }))} />
-            </div>
-            <button onClick={saveHistoryEntry} disabled={historySaving || !newAmount.amount}
-              className="btn-primary w-full flex items-center justify-center gap-2">
-              {historySaving
-                ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                : <Plus size={14} />}
-              Registrar Alteração
-            </button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* ── MODAL: Confirmar Exclusão ── */}
-      <Modal open={!!deleteConfirm} onClose={() => setDeleteConfirm(null)}
-        title="Confirmar Exclusão" size="sm">
-        <div className="text-center space-y-4">
-          <div className="w-12 h-12 bg-red-50 dark:bg-red-900/20 rounded-full flex items-center justify-center mx-auto">
-            <AlertCircle size={22} className="text-red-500" />
-          </div>
-          <div>
-            <p className="text-sm text-slate-600 dark:text-slate-300">Tem certeza que deseja remover</p>
-            <p className="font-bold text-slate-800 dark:text-slate-100 mt-0.5">"{deleteConfirm?.name}"?</p>
-            <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
-              Esta ação irá desativar o item. O histórico de pagamentos será preservado.
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <button onClick={() => setDeleteConfirm(null)} className="btn-secondary flex-1">
-              Cancelar
-            </button>
-            <button
-              onClick={() => {
-                if (!deleteConfirm) return;
-                if (deleteConfirm.type === "source") handleDeleteSource(deleteConfirm.id);
-                if (deleteConfirm.type === "bill") handleDeleteBill(deleteConfirm.id);
-              }}
-              className="flex-1 bg-red-600 hover:bg-red-700 text-white font-medium px-4 py-2 rounded-lg transition-colors text-sm flex items-center justify-center gap-2"
-            >
-              <Trash2 size={14} /> Remover
-            </button>
-          </div>
-        </div>
-      </Modal>
+      <DeleteConfirmModal
+        target={deleteConfirm}
+        onClose={() => setDeleteConfirm(null)}
+        onConfirm={(t) => {
+          if (t.type === "source") handleDeleteSource(t.id);
+          if (t.type === "bill") handleDeleteBill(t.id);
+        }}
+      />
     </div>
   );
 }

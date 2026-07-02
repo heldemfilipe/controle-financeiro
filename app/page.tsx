@@ -224,7 +224,7 @@ export default function DashboardPage() {
             </div>
           </div>
           <div className="overflow-x-auto -mx-2 px-2">
-          <ResponsiveContainer width="100%" height={220} minWidth={500}>
+          <ResponsiveContainer width="100%" height={220}>
             <ComposedChart data={yearlyData} margin={{ top: 5, right: 45, left: 5, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
               <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#94a3b8" }} />

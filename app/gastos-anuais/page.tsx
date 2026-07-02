@@ -295,7 +295,7 @@ export default function GastosAnuaisPage() {
             {/* Composição das Despesas */}
             <div className="card transition-colors">
               <h3 className="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wide mb-3">Composição das Despesas</h3>
-              <div className="overflow-x-auto -mx-4 px-4"><ResponsiveContainer width="100%" height={220} minWidth={400}>
+              <div className="overflow-x-auto -mx-4 px-4"><ResponsiveContainer width="100%" height={220}>
                 <BarChart data={data} margin={{ top: 0, right: 5, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                   <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#94a3b8" }} />
@@ -313,7 +313,7 @@ export default function GastosAnuaisPage() {
             {/* Saldo Acumulado */}
             <div className="card transition-colors">
               <h3 className="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wide mb-3">Saldo Acumulado</h3>
-              <div className="overflow-x-auto -mx-4 px-4"><ResponsiveContainer width="100%" height={220} minWidth={400}>
+              <div className="overflow-x-auto -mx-4 px-4"><ResponsiveContainer width="100%" height={220}>
                 <AreaChart data={data} margin={{ top: 0, right: 5, left: 0, bottom: 0 }}>
                   <defs>
                     <linearGradient id="saldoGrad" x1="0" y1="0" x2="0" y2="1">

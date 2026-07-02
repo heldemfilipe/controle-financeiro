@@ -741,8 +741,8 @@ export default function SimuladorPage() {
                               <summary className="cursor-pointer text-primary-600 dark:text-primary-400 font-medium flex items-center gap-1">
                                 <Calculator size={11} /> Ver tabela de amortizacao ({rows.length} parcelas)
                               </summary>
-                              <div className="mt-2 max-h-48 overflow-y-auto border border-slate-200 dark:border-slate-700 rounded-lg">
-                                <table className="w-full text-xs">
+                              <div className="mt-2 max-h-48 overflow-auto border border-slate-200 dark:border-slate-700 rounded-lg">
+                                <table className="w-full text-xs min-w-[420px]">
                                   <thead className="bg-slate-50 dark:bg-slate-800 sticky top-0">
                                     <tr>
                                       <th className="text-left px-2 py-1.5 text-slate-500">#</th>

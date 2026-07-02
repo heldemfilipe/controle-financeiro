@@ -54,7 +54,11 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     <ToastContext.Provider value={{ toast: addToast }}>
       {children}
       {toasts.length > 0 && (
-        <div className="fixed top-4 right-4 z-[100] space-y-2 max-w-sm">
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed top-4 right-4 left-4 sm:left-auto z-[100] space-y-2 sm:max-w-sm"
+        >
           {toasts.map(t => (
             <div
               key={t.id}
@@ -62,7 +66,11 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             >
               {icons[t.type]}
               <span className="flex-1">{t.message}</span>
-              <button onClick={() => remove(t.id)} className="p-0.5 opacity-60 hover:opacity-100">
+              <button
+                onClick={() => remove(t.id)}
+                aria-label="Fechar notificação"
+                className="p-0.5 opacity-60 hover:opacity-100"
+              >
                 <X size={14} />
               </button>
             </div>

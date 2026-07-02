@@ -195,7 +195,7 @@ export default function GastosCataoesPage() {
           <h3 className="font-semibold text-slate-700 dark:text-slate-200 text-sm mb-3">
             {viewMode === "mensal" ? "Gastos por Cartão" : "Evolução Mensal por Cartão"}
           </h3>
-          <div className="overflow-x-auto -mx-4 px-4"><ResponsiveContainer width="100%" height={220} minWidth={400}>
+          <div className="overflow-x-auto -mx-4 px-4"><ResponsiveContainer width="100%" height={220}>
             {viewMode === "mensal" ? (
               <BarChart
                 data={cardStats.filter(c => c.total > 0).map(c => ({
@@ -376,6 +376,7 @@ export default function GastosCataoesPage() {
           {/* Card comparison table */}
           <div className="card">
             <h3 className="font-semibold text-slate-700 dark:text-slate-200 text-sm mb-3">Comparativo dos Cartões</h3>
+            <div className="overflow-x-auto -mx-4 px-4">
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-slate-100 dark:border-slate-700/50">
@@ -409,6 +410,7 @@ export default function GastosCataoesPage() {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         </div>
       </div>

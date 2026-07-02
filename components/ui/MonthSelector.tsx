@@ -23,6 +23,7 @@ export function MonthSelector({ month, year, onChange }: MonthSelectorProps) {
     <div className="flex items-center gap-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl px-1 py-1 transition-colors">
       <button
         onClick={prev}
+        aria-label="Mês anterior"
         className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
       >
         <ChevronLeft size={16} className="text-slate-600 dark:text-slate-300" />
@@ -32,6 +33,7 @@ export function MonthSelector({ month, year, onChange }: MonthSelectorProps) {
       </span>
       <button
         onClick={next}
+        aria-label="Próximo mês"
         className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
       >
         <ChevronRight size={16} className="text-slate-600 dark:text-slate-300" />

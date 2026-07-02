@@ -100,6 +100,7 @@ export function Sidebar() {
           <button
             onClick={handleLogout}
             title="Sair"
+            aria-label="Sair"
             className="shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-400/10 transition-colors"
           >
             <LogOut size={14} />

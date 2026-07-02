@@ -36,6 +36,7 @@ export function Modal({ open, onClose, title, children, size = "md" }: ModalProp
           <h2 className="font-semibold text-slate-800 dark:text-slate-100 text-base">{title}</h2>
           <button
             onClick={onClose}
+            aria-label="Fechar"
             className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
           >
             <X size={16} className="text-slate-500 dark:text-slate-400" />

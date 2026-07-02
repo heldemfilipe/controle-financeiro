@@ -56,7 +56,9 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
 
       {/* Main content */}
       <main className="md:ml-[240px] pt-14 md:pt-0 min-h-screen">
-        {children}
+        <div className="max-w-[1920px] mx-auto">
+          {children}
+        </div>
       </main>
     </div>
   );

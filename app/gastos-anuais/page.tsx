@@ -200,7 +200,7 @@ export default function GastosAnuaisPage() {
           <div className="card mb-4 transition-colors overflow-hidden">
             <h3 className="text-sm font-bold text-slate-700 dark:text-slate-200 mb-3">Resumo Mensal — {year}</h3>
             <div className="overflow-x-auto -mx-4 px-4">
-              <table className="w-full text-sm min-w-[600px]">
+              <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-slate-100 dark:border-slate-700/50">
                     <th className="text-left py-2 text-xs font-semibold text-slate-400 uppercase tracking-wide">Mês</th>
@@ -210,8 +210,8 @@ export default function GastosAnuaisPage() {
                     <th className="text-right py-2 px-2 text-xs font-semibold text-amber-600 uppercase tracking-wide hidden sm:table-cell">Outros</th>
                     <th className="text-right py-2 px-2 text-xs font-semibold text-red-500 uppercase tracking-wide hidden md:table-cell">Cartões</th>
                     <th className="text-right py-2 px-2 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Despesas</th>
-                    <th className="text-right py-2 px-2 text-xs font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide">Saldo</th>
-                    <th className="text-right py-2 px-2 text-xs font-semibold text-violet-600 uppercase tracking-wide hidden lg:table-cell">Acum.</th>
+                    <th className="text-right py-2 px-2 text-xs font-semibold text-slate-700 dark:text-slate-200 uppercase tracking-wide whitespace-nowrap">Saldo</th>
+                    <th className="text-right py-2 px-2 text-xs font-semibold text-violet-600 uppercase tracking-wide whitespace-nowrap">Acum.</th>
                     <th className="text-right py-2 text-xs font-semibold text-slate-400 uppercase tracking-wide">%</th>
                   </tr>
                 </thead>
@@ -241,14 +241,14 @@ export default function GastosAnuaisPage() {
                         <td className="py-2 px-2 text-right text-red-600 tabular-nums hidden md:table-cell">
                           {row.cartoes > 0 ? formatCurrency(row.cartoes) : <span className="text-slate-300 dark:text-slate-600">—</span>}
                         </td>
-                        <td className="py-2 px-2 text-right font-medium text-slate-700 dark:text-slate-200 tabular-nums">{formatCurrency(row.despesas)}</td>
-                        <td className="py-2 px-2 text-right font-bold tabular-nums">
+                        <td className="py-2 px-2 text-right font-medium text-slate-700 dark:text-slate-200 tabular-nums whitespace-nowrap">{formatCurrency(row.despesas)}</td>
+                        <td className="py-2 px-2 text-right font-bold tabular-nums whitespace-nowrap">
                           <span className={`inline-flex items-center gap-0.5 ${row.saldo >= 0 ? "text-emerald-600" : "text-red-600"}`}>
                             {row.saldo >= 0 ? <ArrowUpRight size={11} /> : <ArrowDownRight size={11} />}
                             {formatCurrency(row.saldo)}
                           </span>
                         </td>
-                        <td className="py-2 px-2 text-right font-semibold tabular-nums hidden lg:table-cell">
+                        <td className="py-2 px-2 text-right font-semibold tabular-nums whitespace-nowrap">
                           <span className={row.saldoAcumulado >= 0 ? "text-violet-600 dark:text-violet-400" : "text-red-600"}>
                             {formatCurrency(row.saldoAcumulado)}
                           </span>
@@ -272,11 +272,11 @@ export default function GastosAnuaisPage() {
                     <td className="py-2.5 px-2 text-right font-bold text-orange-700 dark:text-orange-400 tabular-nums hidden md:table-cell">{formatCurrency(data.reduce((s, d) => s + d.emprestimos, 0))}</td>
                     <td className="py-2.5 px-2 text-right font-bold text-amber-700 dark:text-amber-400 tabular-nums hidden sm:table-cell">{formatCurrency(data.reduce((s, d) => s + d.outros, 0))}</td>
                     <td className="py-2.5 px-2 text-right font-bold text-red-600 tabular-nums hidden md:table-cell">{formatCurrency(totalCartoes)}</td>
-                    <td className="py-2.5 px-2 text-right font-bold text-slate-700 dark:text-slate-200 tabular-nums">{formatCurrency(totalDespesas)}</td>
-                    <td className="py-2.5 px-2 text-right font-bold tabular-nums">
+                    <td className="py-2.5 px-2 text-right font-bold text-slate-700 dark:text-slate-200 tabular-nums whitespace-nowrap">{formatCurrency(totalDespesas)}</td>
+                    <td className="py-2.5 px-2 text-right font-bold tabular-nums whitespace-nowrap">
                       <span className={totalSaldo >= 0 ? "text-emerald-600" : "text-red-600"}>{formatCurrency(totalSaldo)}</span>
                     </td>
-                    <td className="py-2.5 px-2 text-right font-bold tabular-nums hidden lg:table-cell">
+                    <td className="py-2.5 px-2 text-right font-bold tabular-nums whitespace-nowrap">
                       <span className={(data[data.length - 1]?.saldoAcumulado ?? 0) >= 0 ? "text-violet-600 dark:text-violet-400" : "text-red-600"}>
                         {formatCurrency(data[data.length - 1]?.saldoAcumulado ?? 0)}
                       </span>

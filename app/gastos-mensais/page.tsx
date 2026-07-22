@@ -334,7 +334,7 @@ export default function GastosMensaisPage() {
   return (
     <div className="p-3 md:p-6 min-h-screen">
       <PageHeader title="Gastos Mensais" subtitle="Controle de pagamentos por quinzena">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {/* View toggle */}
           <div className="flex bg-slate-100 dark:bg-slate-700/60 rounded-lg p-0.5 text-xs">
             <button

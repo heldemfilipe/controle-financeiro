@@ -95,7 +95,7 @@ export default function GastosAnuaisPage() {
   return (
     <div className="p-3 md:p-6 min-h-screen">
       <PageHeader title="Gastos Anuais" subtitle="Visão completa do ano">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={async () => {
               const { exportFinanceiro } = await import("@/lib/exportExcel");

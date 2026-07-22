@@ -104,7 +104,7 @@ export default function GastosCataoesPage() {
   return (
     <div className="p-3 md:p-6 min-h-screen">
       <PageHeader title="Gastos nos Cartões" subtitle="Análise detalhada das faturas">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {/* View Mode Toggle */}
           <div className="flex bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl p-1 transition-colors">
             <button

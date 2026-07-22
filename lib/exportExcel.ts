@@ -1,6 +1,6 @@
 import * as XLSX from "xlsx";
 import type { FixedBill } from "@/types";
-import { computeInstallment, resolveSourceAmount } from "@/lib/utils";
+import { computeInstallment, resolveSourceAmount, isSourceActiveInMonth } from "@/lib/utils";
 import { MONTHS } from "@/types";
 import {
   getCardTransactionsByYear,
@@ -74,10 +74,7 @@ export async function exportFinanceiro(year: number) {
       const monthIncs    = allMonthlyIncomes[m - 1];
       const monthBillPays = allBillPayments[m - 1];
 
-      const sourcesM = incomeSources.filter(s =>
-        s.is_recurring !== false ||
-        (s.one_time_month === m && s.one_time_year === year)
-      );
+      const sourcesM = incomeSources.filter(s => isSourceActiveInMonth(s, m, year));
       const receitas = sourcesM.reduce((s, src) => {
         const mi = monthIncs.find(i => i.source_id === src.id);
         return s + (mi?.amount ?? resolveSourceAmount(src, m, year, srcAmounts));
@@ -188,9 +185,7 @@ export async function exportFinanceiro(year: number) {
     incomeSources.forEach(src => {
       const monthly = Array.from({ length: 12 }, (_, i) => {
         const m = i + 1;
-        if (src.is_recurring === false) {
-          if (src.one_time_month !== m || src.one_time_year !== year) return 0;
-        }
+        if (!isSourceActiveInMonth(src, m, year)) return 0;
         const mi = allMonthlyIncomes[i].find(inc => inc.source_id === src.id);
         return currency(mi?.amount ?? resolveSourceAmount(src, m, year, srcAmounts));
       });

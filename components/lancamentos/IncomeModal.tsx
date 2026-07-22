@@ -1,7 +1,6 @@
 "use client";
 
 import { Modal } from "@/components/ui/Modal";
-import { Toggle } from "@/components/ui/Toggle";
 import { MONTHS } from "@/types";
 import type { IncomeSource } from "@/types";
 import type { Owner } from "@/lib/owners";
@@ -18,7 +17,41 @@ interface IncomeModalProps {
   year: number;
 }
 
+type Recurrence = "always" | "from" | "once";
+
+function recurrenceOf(v: Partial<IncomeSource>): Recurrence {
+  if (v.is_recurring === false) return "once";
+  if (v.start_month != null && v.start_year != null) return "from";
+  return "always";
+}
+
 export function IncomeModal({ open, onClose, value, onChange, onSave, saving, owners, month, year }: IncomeModalProps) {
+  const recurrence = recurrenceOf(value);
+
+  function applyRecurrence(mode: Recurrence) {
+    if (mode === "always") {
+      onChange({
+        is_recurring: true,
+        start_month: null, start_year: null,
+        one_time_month: null, one_time_year: null,
+      });
+    } else if (mode === "from") {
+      onChange({
+        is_recurring: true,
+        start_month: value.start_month ?? month,
+        start_year:  value.start_year  ?? year,
+        one_time_month: null, one_time_year: null,
+      });
+    } else {
+      onChange({
+        is_recurring: false,
+        one_time_month: value.one_time_month ?? month,
+        one_time_year:  value.one_time_year  ?? year,
+        start_month: null, start_year: null,
+      });
+    }
+  }
+
   return (
     <Modal open={open} onClose={onClose}
       title={value.id ? "Editar Fonte de Renda" : "Nova Fonte de Renda"}>
@@ -64,37 +97,46 @@ export function IncomeModal({ open, onClose, value, onChange, onSave, saving, ow
           </div>
         </div>
 
-        {/* Receita avulsa (somente um mês) */}
-        <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-700/50 rounded-lg px-3 py-2.5">
-          <div>
-            <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Somente este mês</p>
-            <p className="text-xs text-slate-400 dark:text-slate-500">Receita avulsa, não recorrente</p>
-          </div>
-          <Toggle
-            checked={value.is_recurring === false}
-            onChange={v => onChange({
-              is_recurring: !v,
-              one_time_month: !v ? (value.one_time_month ?? month) : null,
-              one_time_year:  !v ? (value.one_time_year  ?? year)  : null,
-            })}
-          />
+        {/* Recorrência */}
+        <div>
+          <label className="label">Quando recebe</label>
+          <select className="input" value={recurrence}
+            onChange={e => applyRecurrence(e.target.value as Recurrence)}>
+            <option value="always">Recorrente — todo mês</option>
+            <option value="from">Recorrente — a partir de um mês</option>
+            <option value="once">Somente um mês (avulso)</option>
+          </select>
+          <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+            {recurrence === "always" && "Aparece em todos os meses."}
+            {recurrence === "from" && "Passa a aparecer a partir do mês escolhido e continua nos meses seguintes. Ex: novo salário ou benefício a partir de agosto."}
+            {recurrence === "once" && "Aparece só no mês escolhido, uma única vez."}
+          </p>
         </div>
 
-        {/* Mês/Ano da receita avulsa */}
-        {value.is_recurring === false && (
+        {/* Mês/Ano de início (recorrente a partir de / avulso) */}
+        {recurrence !== "always" && (
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="label">Mês</label>
-              <select className="input" value={value.one_time_month ?? month}
-                onChange={e => onChange({ one_time_month: Number(e.target.value) })}>
+              <label className="label">{recurrence === "from" ? "A partir de" : "Mês"}</label>
+              <select className="input"
+                value={(recurrence === "from" ? value.start_month : value.one_time_month) ?? month}
+                onChange={e => onChange(
+                  recurrence === "from"
+                    ? { start_month: Number(e.target.value) }
+                    : { one_time_month: Number(e.target.value) }
+                )}>
                 {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
               </select>
             </div>
             <div>
               <label className="label">Ano</label>
               <input className="input" type="number" min="2020" max="2035"
-                value={value.one_time_year ?? year}
-                onChange={e => onChange({ one_time_year: Number(e.target.value) })} />
+                value={(recurrence === "from" ? value.start_year : value.one_time_year) ?? year}
+                onChange={e => onChange(
+                  recurrence === "from"
+                    ? { start_year: Number(e.target.value) }
+                    : { one_time_year: Number(e.target.value) }
+                )} />
             </div>
           </div>
         )}

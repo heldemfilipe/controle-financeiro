@@ -110,17 +110,12 @@ export default function LancamentosPage() {
     setFormErrors({});
     setLoading(true);
     try {
-      const isRecurring = editIncome.is_recurring !== false;
       await upsertIncomeSource({
         owner: owners[0]?.id ?? "casal", type: "salary", active: true,
         is_recurring: true,
         one_time_month: null, one_time_year: null,
+        start_month: null, start_year: null,
         ...editIncome,
-        ...(isRecurring ? {} : {
-          is_recurring: false,
-          one_time_month: editIncome.one_time_month ?? month,
-          one_time_year:  editIncome.one_time_year  ?? year,
-        }),
       });
       setIncomeModal(false); setEditIncome({});
       toast(editIncome.id ? "Receita atualizada" : "Receita adicionada");

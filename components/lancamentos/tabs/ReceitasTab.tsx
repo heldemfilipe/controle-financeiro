@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus, Pencil, Trash2, TrendingUp, CalendarClock, CalendarX } from "lucide-react";
+import { Plus, Pencil, Trash2, TrendingUp, CalendarClock, CalendarX, CalendarPlus } from "lucide-react";
 import { TotalSummaryCard } from "@/components/lancamentos/TotalSummaryCard";
 import { MONTHS } from "@/types";
 import { formatCurrency, resolveSourceAmount } from "@/lib/utils";
@@ -75,6 +75,12 @@ export function ReceitasTab({
                           {isSkipped
                             ? `Sem recebimento em ${MONTHS[month - 1]}`
                             : `Ajustado em ${MONTHS[month - 1]} · padrão ${formatCurrency(defaultAmt)}`}
+                        </span>
+                      )}
+                      {src.is_recurring !== false && src.start_month != null && src.start_year != null && (
+                        <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-violet-50 text-violet-600 dark:bg-violet-900/30 dark:text-violet-400">
+                          <CalendarPlus size={10} />
+                          Recorrente desde {MONTHS[src.start_month - 1]}/{src.start_year}
                         </span>
                       )}
                     </div>

@@ -5,7 +5,7 @@ import {
   getBillAdvancesMadeInYear, getBillAdvancesForYear,
   getIncomeSourceAmounts,
 } from "./queries";
-import { computeInstallment, getAccConfig, resolveSourceAmount } from "./utils";
+import { computeInstallment, getAccConfig, resolveSourceAmount, isSourceActiveInMonth } from "./utils";
 import type { AccumuladoConfig } from "./utils";
 import type { FixedBill, IncomeSource, IncomeSourceAmount, MonthlyBalanceOverride, BillAdvance } from "@/types";
 
@@ -77,10 +77,7 @@ export async function computeMonthBalance(
   const advancedBillIds = new Set(rawAdvancesFor.map(a => a.bill_id));
 
   // Receita
-  const sourcesForMonth = allSources.filter(s =>
-    s.is_recurring !== false ||
-    (s.one_time_month === month && s.one_time_year === year)
-  );
+  const sourcesForMonth = allSources.filter(s => isSourceActiveInMonth(s, month, year));
   const totalIncome = sourcesForMonth.reduce((s, src) => {
     const mi = incomes.find(i => i.source_id === src.id);
     return s + (mi?.amount ?? resolveSourceAmount(src, month, year, allSourceAmounts));

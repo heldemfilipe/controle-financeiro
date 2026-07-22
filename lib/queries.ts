@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { isSourceActiveInMonth } from "./utils";
 import type {
   IncomeSource, IncomeSourceAmount, FixedBill, CreditCard, CardTransaction, Category,
   MonthlyBillPayment, MonthlyCardPayment, MonthlyIncome, MonthlyBalanceOverride, BillAdvance,
@@ -50,11 +51,8 @@ export async function getIncomeSources(month?: number, year?: number) {
 
   if (month == null || year == null) return all;
 
-  // Filtra: recorrentes sempre aparecem; avulsas só no mês/ano correto
-  return all.filter(s =>
-    s.is_recurring !== false ||
-    (s.one_time_month === month && s.one_time_year === year)
-  );
+  // Filtra: recorrentes (a partir de start_month/year, se definido); avulsas só no mês/ano correto
+  return all.filter(s => isSourceActiveInMonth(s, month, year));
 }
 
 export async function upsertIncomeSource(source: Partial<IncomeSource>) {

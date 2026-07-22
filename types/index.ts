@@ -32,6 +32,9 @@ export interface IncomeSource {
   is_recurring: boolean;
   one_time_month: number | null;
   one_time_year: number | null;
+  /** Recorrente que só passa a valer a partir deste mês/ano (null = sempre valeu) */
+  start_month: number | null;
+  start_year: number | null;
   created_at: string;
 }
 

@@ -193,6 +193,26 @@ export function resolveSourceAmount(
   return best?.amount ?? source.base_amount;
 }
 
+/**
+ * Indica se uma fonte de renda deve aparecer em um dado mês/ano:
+ * - Avulsa (is_recurring=false): só no mês/ano exato de one_time_month/year.
+ * - Recorrente sem start_month/year: sempre aparece.
+ * - Recorrente com start_month/year: aparece a partir desse mês/ano (inclusive).
+ */
+export function isSourceActiveInMonth(
+  source: IncomeSource,
+  month: number,
+  year: number,
+): boolean {
+  if (source.is_recurring === false) {
+    return source.one_time_month === month && source.one_time_year === year;
+  }
+  if (source.start_month != null && source.start_year != null) {
+    return year > source.start_year || (year === source.start_year && month >= source.start_month);
+  }
+  return true;
+}
+
 // ── Configuração do saldo acumulado ──────────────────────────────────────────
 
 export interface AccumuladoConfig {

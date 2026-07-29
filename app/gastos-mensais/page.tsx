@@ -8,7 +8,7 @@ import { useToast } from "@/components/ui/Toast";
 import {
   getFixedBills, getMonthlyBillPayments, toggleBillPaid, updateBillPaymentAmount,
   getCreditCards, getCardTransactions, getMonthlyCardPayments, toggleCardPaid,
-  getMonthlyIncomes, getIncomeSources, getIncomeSourceAmounts,
+  getMonthlyIncomes, getIncomeSources, getIncomeSourceAmounts, getCategories,
   getBalanceOverride, upsertBalanceOverride, deleteBalanceOverride,
   getBillAdvancesMadeIn, getBillAdvancesForMonth, createBillAdvance, deleteBillAdvance,
 } from "@/lib/queries";
@@ -19,7 +19,7 @@ import { calcTithe } from "@/lib/gastos-mensais/tithe";
 import { MONTHS } from "@/types";
 import type {
   FixedBill, CreditCard as CCType, MonthlyBillPayment,
-  MonthlyCardPayment, IncomeSource, IncomeSourceAmount, MonthlyIncome, CardTransaction, MonthlyBalanceOverride, BillAdvance,
+  MonthlyCardPayment, IncomeSource, IncomeSourceAmount, MonthlyIncome, CardTransaction, MonthlyBalanceOverride, BillAdvance, Category,
 } from "@/types";
 
 import { FluxoCaixa } from "@/components/gastos-mensais/FluxoCaixa";
@@ -60,6 +60,7 @@ export default function GastosMensaisPage() {
   const [cardPayments,  setCardPayments]  = useState<MonthlyCardPayment[]>([]);
   const [cardTotals,       setCardTotals]       = useState<Record<string, number>>({});
   const [cardTransactions, setCardTransactions] = useState<CardTransaction[]>([]);
+  const [categories,       setCategories]       = useState<Category[]>([]);
   const [incomeSources,    setIncomeSources]    = useState<IncomeSource[]>([]);
   const [monthlyIncomes,   setMonthlyIncomes]   = useState<MonthlyIncome[]>([]);
   const [sourceAmounts,    setSourceAmounts]    = useState<IncomeSourceAmount[]>([]);
@@ -97,7 +98,7 @@ export default function GastosMensaisPage() {
       clearBalanceCache();
       const [
         bills, payments, cards, cardPays, txs, sources, incomes, override,
-        advMade, advFor, srcAmts,
+        advMade, advFor, srcAmts, cats,
       ] = await Promise.all([
         getFixedBills(),
         getMonthlyBillPayments(month, year),
@@ -110,8 +111,10 @@ export default function GastosMensaisPage() {
         getBillAdvancesMadeIn(month, year),
         getBillAdvancesForMonth(month, year),
         getIncomeSourceAmounts(),
+        getCategories(),
       ]);
       setSourceAmounts(srcAmts);
+      setCategories(cats);
       setBalanceOverride(override);
       setAdvancesMadeThisMonth(advMade);
       setAdvancesForThisMonth(advFor);
@@ -416,6 +419,7 @@ export default function GastosMensaisPage() {
               cardPayments={cardPayments}
               cardSt={cardSt}
               cardTransactions={cardTransactions}
+              categories={categories}
               expandedCard={expandedCard}
               onExpandCard={setExpandedCard}
               month={month}
@@ -442,6 +446,7 @@ export default function GastosMensaisPage() {
               cardPayments={cardPayments}
               cardSt={cardSt}
               cardTransactions={cardTransactions}
+              categories={categories}
               expandedCard={expandedCard}
               onExpandCard={setExpandedCard}
               month={month}

@@ -11,6 +11,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/components/providers/ThemeProvider";
 import { createSupabaseBrowser } from "@/lib/supabase-browser";
+import pkg from "@/package.json";
 
 const navGroups = [
   {
@@ -178,7 +179,7 @@ export function Sidebar() {
           </div>
         </button>
 
-        <p className="text-xs text-slate-600 text-center mt-2">v1.0.0 · MIT</p>
+        <p className="text-xs text-slate-600 text-center mt-2">v{pkg.version} · MIT</p>
       </div>
     </aside>
   );

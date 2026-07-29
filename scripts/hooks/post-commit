@@ -1,0 +1,5 @@
+#!/bin/sh
+# Bumps package.json's version according to the conventional-commit type
+# of the commit just made, and folds the bump into it. Installed by
+# scripts/install-hooks.js.
+node "$(git rev-parse --show-toplevel)/scripts/bump-version.js"

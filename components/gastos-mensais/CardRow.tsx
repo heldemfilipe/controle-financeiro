@@ -2,9 +2,10 @@
 
 import { CreditCard, ChevronDown, ChevronRight } from "lucide-react";
 import { Toggle } from "@/components/ui/Toggle";
+import { CategoryBadge } from "@/components/lancamentos/CategoryBadge";
 import { formatCurrency, getDueInfo } from "@/lib/utils";
 import type { DueInfo } from "@/lib/utils";
-import type { CreditCard as CCType, MonthlyCardPayment, CardTransaction } from "@/types";
+import type { CreditCard as CCType, MonthlyCardPayment, CardTransaction, Category } from "@/types";
 
 interface CardRowProps {
   card: CCType;
@@ -12,6 +13,7 @@ interface CardRowProps {
   cardSt: (card: CCType) => "paid" | "overdue" | "pending";
   cardPayments: MonthlyCardPayment[];
   cardTransactions: CardTransaction[];
+  categories: Category[];
   expandedCard: string | null;
   onExpandCard: (cardId: string | null) => void;
   month: number;
@@ -21,7 +23,7 @@ interface CardRowProps {
 }
 
 export function CardRow({
-  card, cardTotals, cardSt, cardPayments, cardTransactions, expandedCard, onExpandCard,
+  card, cardTotals, cardSt, cardPayments, cardTransactions, categories, expandedCard, onExpandCard,
   month, year, incomeTotal, onToggle,
 }: CardRowProps) {
   const total    = cardTotals[card.id] ?? 0;
@@ -148,9 +150,12 @@ export function CardRow({
             <div key={tx.id} className="flex items-center justify-between gap-2 py-0.5">
               <div className="min-w-0 flex-1">
                 <span className="text-xs text-slate-600 dark:text-slate-300 truncate block">{tx.description}</span>
-                {tx.installment_total > 1 && (
-                  <span className="text-xs text-violet-500 font-medium">{tx.installment_current}/{tx.installment_total}x</span>
-                )}
+                <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                  {tx.installment_total > 1 && (
+                    <span className="text-xs text-violet-500 font-medium">{tx.installment_current}/{tx.installment_total}x</span>
+                  )}
+                  <CategoryBadge category={tx.category} categories={categories} size="sm" />
+                </div>
               </div>
               <span className={`text-xs font-semibold shrink-0 ${tx.amount > 0 ? "text-emerald-500" : "text-slate-600 dark:text-slate-300"}`}>
                 {tx.amount > 0 ? "+" : "-"}{formatCurrency(Math.abs(tx.amount))}

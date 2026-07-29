@@ -7,7 +7,7 @@ import { formatCurrency } from "@/lib/utils";
 import { MONTHS } from "@/types";
 import type {
   FixedBill, CreditCard as CCType, MonthlyBillPayment, MonthlyCardPayment,
-  CardTransaction, BillAdvance,
+  CardTransaction, BillAdvance, Category,
 } from "@/types";
 
 interface QuinzenaSectionProps {
@@ -29,6 +29,7 @@ interface QuinzenaSectionProps {
   cardPayments: MonthlyCardPayment[];
   cardSt: (card: CCType) => "paid" | "overdue" | "pending";
   cardTransactions: CardTransaction[];
+  categories: Category[];
   expandedCard: string | null;
   onExpandCard: (cardId: string | null) => void;
   month: number;
@@ -45,7 +46,7 @@ export function QuinzenaSection({
   label, subtitle, bills, cards, totalQ,
   fixedBills, billPayments, billAmount, billEffectiveAmount, billSt,
   advancedBillIds, advancesForThisMonth, advancesMadeThisMonth,
-  cardTotals, cardPayments, cardSt, cardTransactions, expandedCard, onExpandCard,
+  cardTotals, cardPayments, cardSt, cardTransactions, categories, expandedCard, onExpandCard,
   month, year, incomeTotal, onToggleBill, onToggleCard, onAdvanceBill, onEditBill, onRemoveAdvance,
 }: QuinzenaSectionProps) {
   const isQ1     = label.startsWith("1");
@@ -229,6 +230,7 @@ export function QuinzenaSection({
                   cardSt={cardSt}
                   cardPayments={cardPayments}
                   cardTransactions={cardTransactions}
+                  categories={categories}
                   expandedCard={expandedCard}
                   onExpandCard={onExpandCard}
                   month={month}

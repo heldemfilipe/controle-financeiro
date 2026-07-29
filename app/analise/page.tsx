@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { MonthSelector } from "@/components/ui/MonthSelector";
 import {
@@ -27,6 +28,7 @@ interface CardDetail {
   name: string;
   color: string;
   amount: number;
+  transactions: CardTransaction[];
 }
 
 interface CardCatData {
@@ -35,21 +37,29 @@ interface CardCatData {
 }
 
 function groupCardByCat(txs: CardTransaction[], cards: CreditCardType[]): Record<string, CardCatData> {
-  const byCardByCat: Record<string, Record<string, number>> = {};
+  const byCardByCat: Record<string, Record<string, { amount: number; transactions: CardTransaction[] }>> = {};
 
   txs.forEach(tx => {
     const key = tx.category ?? "Sem categoria";
     if (!byCardByCat[key]) byCardByCat[key] = {};
-    byCardByCat[key][tx.card_id] = (byCardByCat[key][tx.card_id] ?? 0) - tx.amount;
+    if (!byCardByCat[key][tx.card_id]) byCardByCat[key][tx.card_id] = { amount: 0, transactions: [] };
+    byCardByCat[key][tx.card_id].amount -= tx.amount;
+    byCardByCat[key][tx.card_id].transactions.push(tx);
   });
 
   const result: Record<string, CardCatData> = {};
   Object.entries(byCardByCat).forEach(([cat, cardMap]) => {
     const byCard: CardDetail[] = Object.entries(cardMap)
-      .filter(([, v]) => v > 0)
-      .map(([cardId, amount]) => {
+      .filter(([, v]) => v.amount > 0)
+      .map(([cardId, { amount, transactions }]) => {
         const card = cards.find(c => c.id === cardId);
-        return { id: cardId, name: card?.name ?? "Cartão", color: card?.color ?? "#6366f1", amount };
+        return {
+          id: cardId,
+          name: card?.name ?? "Cartão",
+          color: card?.color ?? "#6366f1",
+          amount,
+          transactions: [...transactions].sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)),
+        };
       })
       .sort((a, b) => b.amount - a.amount);
     const total = byCard.reduce((s, c) => s + c.amount, 0);
@@ -77,6 +87,7 @@ export default function AnalisePage() {
   const [prevCatMap,     setPrevCatMap]     = useState<Record<string, number>>({});
   const [incomeTotal,    setIncomeTotal]    = useState(0);
   const [prevBalance,    setPrevBalance]    = useState(0);
+  const [expandedCard,   setExpandedCard]   = useState<string | null>(null);
 
   useEffect(() => { loadData(); }, [month, year]);
 
@@ -312,15 +323,47 @@ export default function AnalisePage() {
                               {b.name} {formatCurrency(monthlyBillAmt[b.id] ?? b.amount)}
                             </span>
                           ))}
-                          {cardData && cardData.byCard.map(c => (
-                            <span key={c.id} className="text-xs font-medium flex items-center gap-1">
-                              <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ backgroundColor: c.color }} />
-                              <span style={{ color: c.color }}>{c.name}</span>
-                              <span className="text-slate-400 dark:text-slate-500">{formatCurrency(c.amount)}</span>
-                            </span>
-                          ))}
+                          {cardData && cardData.byCard.map(c => {
+                            const detailKey = `${entry.rawName}:${c.id}`;
+                            const isOpen = expandedCard === detailKey;
+                            return (
+                              <button
+                                key={c.id}
+                                onClick={() => setExpandedCard(isOpen ? null : detailKey)}
+                                className="text-xs font-medium flex items-center gap-1 hover:opacity-75 transition-opacity"
+                              >
+                                {isOpen ? <ChevronDown size={11} className="text-slate-400" /> : <ChevronRight size={11} className="text-slate-400" />}
+                                <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ backgroundColor: c.color }} />
+                                <span style={{ color: c.color }}>{c.name}</span>
+                                <span className="text-slate-400 dark:text-slate-500">{formatCurrency(c.amount)}</span>
+                              </button>
+                            );
+                          })}
                         </div>
                       )}
+
+                      {/* Detalhamento dos lançamentos do cartão expandido */}
+                      {cardData && cardData.byCard.map(c => {
+                        const detailKey = `${entry.rawName}:${c.id}`;
+                        if (expandedCard !== detailKey) return null;
+                        return (
+                          <div key={c.id} className="mt-1.5 ml-5 pl-3 border-l-2 space-y-1" style={{ borderColor: c.color }}>
+                            {c.transactions.map(tx => (
+                              <div key={tx.id} className="flex items-center justify-between gap-2 text-xs">
+                                <span className="text-slate-500 dark:text-slate-400 truncate">
+                                  {tx.description}
+                                  {tx.installment_total > 1 && (
+                                    <span className="text-violet-500 font-medium ml-1">{tx.installment_current}/{tx.installment_total}x</span>
+                                  )}
+                                </span>
+                                <span className="text-slate-600 dark:text-slate-300 font-medium shrink-0">
+                                  {formatCurrency(Math.abs(tx.amount))}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })}
                     </div>
                   );
                 })}

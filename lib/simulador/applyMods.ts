@@ -194,3 +194,23 @@ export function applyMods(
     return { ...m, saldoAcumulado: acc };
   });
 }
+
+/**
+ * Soma o efeito líquido (receitas − despesas) que as modificações do cenário
+ * causariam em um ano específico, isolado dos dados reais. Usado para arrastar
+ * o efeito acumulado de anos anteriores (ex: um empréstimo tomado em 2026) para
+ * o saldo inicial do cenário ao navegar para 2027 — sem isso, o saldo do
+ * "Meu Cenário" reiniciaria do valor real todo ano, perdendo o carry-over.
+ */
+export function modsSaldoDeltaForYear(
+  mods: ScenarioMod[],
+  bills: FixedBill[],
+  year: number,
+  cfg?: AccCfg,
+): number {
+  const dummyBase: MonthData[] = Array.from({ length: 12 }, (_, i) => ({
+    month: i + 1, name: "", receitas: 0, billsTotal: 0, cartoes: 0, despesas: 0, saldo: 0, saldoAcumulado: 0,
+  }));
+  const result = applyMods(dummyBase, mods, bills, year, 0, cfg, []);
+  return result.reduce((s, r) => s + r.saldo, 0);
+}

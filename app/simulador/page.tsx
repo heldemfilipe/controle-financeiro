@@ -12,7 +12,7 @@ import {
   TrendingUp, TrendingDown, Wallet, FlaskConical,
   RotateCcw,
 } from "lucide-react";
-import { applyMods, newMod } from "@/lib/simulador/applyMods";
+import { applyMods, newMod, modsSaldoDeltaForYear } from "@/lib/simulador/applyMods";
 import type { ScenarioMod, MonthData, AccCfg } from "@/lib/simulador/applyMods";
 import { ModCard } from "@/components/simulador/ModCard";
 import { ScenarioChart } from "@/components/simulador/ScenarioChart";
@@ -94,9 +94,22 @@ export default function SimuladorPage() {
   }
 
   // Derived — memoizados para evitar recalcular em cada render
+
+  // Arrasta o efeito acumulado das modificações em anos anteriores (ex: parcelas
+  // de um empréstimo tomado em 2026 ainda em aberto em 2027) para o saldo inicial
+  // do cenário — sem isso, ao navegar de ano o saldo simulado voltaria a partir
+  // do valor real, perdendo o carry-over do próprio cenário.
+  const scenarioYearStartBalance = useMemo(() => {
+    let carry = 0;
+    for (let y = accCfg.startYear; y < year; y++) {
+      carry += modsSaldoDeltaForYear(mods, bills, y, accCfg);
+    }
+    return yearStartBalance + carry;
+  }, [mods, bills, year, accCfg, yearStartBalance]);
+
   const scenarioData = useMemo(
-    () => applyMods(baseData, mods, bills, year, yearStartBalance, accCfg, overrides),
-    [baseData, mods, bills, year, yearStartBalance, accCfg, overrides],
+    () => applyMods(baseData, mods, bills, year, scenarioYearStartBalance, accCfg, overrides),
+    [baseData, mods, bills, year, scenarioYearStartBalance, accCfg, overrides],
   );
 
   const totBase = useMemo(() => ({

@@ -41,6 +41,8 @@ interface ModCardProps {
 export function ModCard({ mod, idx, year, bills, onUpdate, onRemove }: ModCardProps) {
   const isOneTime = mod.type === "one_time_income" || mod.type === "one_time_expense";
   const valid = isModValid(mod);
+  // Anos disponíveis para contratar o empréstimo, centrados no ano exibido no simulador
+  const LOAN_YEAR_OPTS = Array.from({ length: 12 }, (_, i) => year - 1 + i);
 
   return (
     <div className={`border rounded-xl p-3 space-y-2.5 ${
@@ -243,22 +245,43 @@ export function ModCard({ mod, idx, year, bills, onUpdate, onRemove }: ModCardPr
         {/* De (mês início) */}
         <div>
           <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">
-            {isOneTime ? "Mes" : mod.type === "loan" ? `Mes do emprestimo (${mod.loanStartYear ?? year})` : mod.type === "pay_off_installment" ? "Mes da quitacao" : "A partir de"}
+            {isOneTime ? "Mes" : mod.type === "loan" ? "Mes / Ano do emprestimo" : mod.type === "pay_off_installment" ? "Mes da quitacao" : "A partir de"}
           </label>
-          <select
-            value={mod.startMonth}
-            onChange={e => {
-              const v = +e.target.value;
-              onUpdate(mod.id, {
-                startMonth: v,
-                endMonth: isOneTime ? v : Math.max(mod.endMonth, v),
-              });
-            }}
-            className="w-full text-xs bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600
-                       rounded-lg px-2.5 py-1.5 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-primary-500"
-          >
-            {MONTH_OPTS.map(m => <option key={m} value={m}>{getMonthName(m)}</option>)}
-          </select>
+          {mod.type === "loan" ? (
+            <div className="flex gap-1.5">
+              <select
+                value={mod.startMonth}
+                onChange={e => onUpdate(mod.id, { startMonth: +e.target.value })}
+                className="flex-1 min-w-0 text-xs bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600
+                           rounded-lg px-2 py-1.5 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-primary-500"
+              >
+                {MONTH_OPTS.map(m => <option key={m} value={m}>{getMonthName(m)}</option>)}
+              </select>
+              <select
+                value={mod.loanStartYear ?? year}
+                onChange={e => onUpdate(mod.id, { loanStartYear: +e.target.value })}
+                className="w-[76px] shrink-0 text-xs bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600
+                           rounded-lg px-2 py-1.5 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-primary-500"
+              >
+                {LOAN_YEAR_OPTS.map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </div>
+          ) : (
+            <select
+              value={mod.startMonth}
+              onChange={e => {
+                const v = +e.target.value;
+                onUpdate(mod.id, {
+                  startMonth: v,
+                  endMonth: isOneTime ? v : Math.max(mod.endMonth, v),
+                });
+              }}
+              className="w-full text-xs bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600
+                         rounded-lg px-2.5 py-1.5 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-primary-500"
+            >
+              {MONTH_OPTS.map(m => <option key={m} value={m}>{getMonthName(m)}</option>)}
+            </select>
+          )}
         </div>
 
         {/* Até (mês fim) — oculto para one-time, loan e pay_off */}

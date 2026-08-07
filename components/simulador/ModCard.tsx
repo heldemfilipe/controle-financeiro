@@ -57,7 +57,12 @@ export function ModCard({ mod, idx, year, bills, onUpdate, onRemove }: ModCardPr
           onChange={e => {
             const type = e.target.value as ModType;
             const isOT = type === "one_time_income" || type === "one_time_expense";
-            onUpdate(mod.id, { type, endMonth: isOT ? mod.startMonth : 12 });
+            onUpdate(mod.id, {
+              type,
+              endMonth: isOT ? mod.startMonth : 12,
+              // Fixa o ano de contratação do empréstimo ao ano sendo exibido no momento da criação
+              loanStartYear: type === "loan" ? (mod.loanStartYear ?? year) : mod.loanStartYear,
+            });
           }}
           className="flex-1 text-xs font-medium bg-white dark:bg-slate-700
                      border border-slate-200 dark:border-slate-600 rounded-lg px-2.5 py-1.5
@@ -238,7 +243,7 @@ export function ModCard({ mod, idx, year, bills, onUpdate, onRemove }: ModCardPr
         {/* De (mês início) */}
         <div>
           <label className="text-xs text-slate-500 dark:text-slate-400 mb-1 block">
-            {isOneTime ? "Mes" : mod.type === "loan" ? "Mes do emprestimo" : mod.type === "pay_off_installment" ? "Mes da quitacao" : "A partir de"}
+            {isOneTime ? "Mes" : mod.type === "loan" ? `Mes do emprestimo (${mod.loanStartYear ?? year})` : mod.type === "pay_off_installment" ? "Mes da quitacao" : "A partir de"}
           </label>
           <select
             value={mod.startMonth}
@@ -340,7 +345,7 @@ export function ModCard({ mod, idx, year, bills, onUpdate, onRemove }: ModCardPr
           installments: mod.loanInstallments ?? 12,
           method: mod.loanMethod ?? "price",
           startMonth: mod.startMonth,
-          startYear: year,
+          startYear: mod.loanStartYear ?? year,
         });
         const summary = loanSummary(rows);
         return (

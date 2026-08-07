@@ -37,7 +37,7 @@ export default function SimuladorPage() {
   const [baseData, setBaseData] = useState<MonthData[]>([]);
   const [bills, setBills]   = useState<FixedBill[]>([]);
 
-  const [scenarioName, setScenarioName] = useState("Meu Cenário");
+  const [scenarioName, setScenarioName] = useState("Cenário Simulado");
   const [mods, setMods]     = useState<ScenarioMod[]>([]);
   const [yearStartBalance, setYearStartBalance] = useState(0);
   const [accCfg, setAccCfg] = useState<AccCfg>(() => getAccConfig());
@@ -47,7 +47,7 @@ export default function SimuladorPage() {
   useEffect(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) { const p = JSON.parse(saved); setScenarioName(p.name ?? "Meu Cenário"); setMods(p.mods ?? []); }
+      if (saved) { const p = JSON.parse(saved); setScenarioName(p.name ?? "Cenário Simulado"); setMods(p.mods ?? []); }
     } catch {}
   }, []);
   useEffect(() => {

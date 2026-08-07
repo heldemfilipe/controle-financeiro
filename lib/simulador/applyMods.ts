@@ -24,6 +24,8 @@ export interface ScenarioMod {
   loanRate?: number;
   loanInstallments?: number;
   loanMethod?: "price" | "sac";
+  /** Ano em que o empréstimo foi contraído (fixo — não muda ao navegar entre anos) */
+  loanStartYear?: number;
   // Quitação customizada (pay_off_installment)
   payoffAmount?: number;     // valor customizado; se null usa cálculo automático
 }
@@ -98,13 +100,16 @@ export function applyMods(
   const loanPayments = new Map<string, Map<number, number>>(); // modId → month → payment
   for (const mod of mods) {
     if (mod.type === "loan" && mod.amount > 0 && (mod.loanInstallments ?? 0) > 0 && mod.loanRate != null) {
+      // O empréstimo é sempre calculado a partir do ano em que foi contraído
+      // (loanStartYear), não do ano atualmente exibido — assim as parcelas
+      // que caem em anos seguintes aparecem corretamente ao navegar entre anos.
       const rows = calculateAmortization({
         amount: mod.amount,
         monthlyRate: mod.loanRate / 100,
         installments: mod.loanInstallments!,
         method: mod.loanMethod ?? "price",
         startMonth: mod.startMonth,
-        startYear: year,
+        startYear: mod.loanStartYear ?? year,
       });
       const byMonth = new Map<number, number>();
       for (const r of rows) {
@@ -163,7 +168,8 @@ export function applyMods(
         case "one_time_income":  if (row.month === mod.startMonth) receitas   += mod.amount; break;
         case "one_time_expense": if (row.month === mod.startMonth) billsTotal += mod.amount; break;
         case "loan": {
-          if (row.month === mod.startMonth) receitas += mod.amount;
+          // Recebimento do valor emprestado só ocorre no ano em que o empréstimo foi contraído
+          if (row.month === mod.startMonth && (mod.loanStartYear ?? year) === year) receitas += mod.amount;
           const payment = loanPayments.get(mod.id)?.get(row.month);
           if (payment) billsTotal += payment;
           break;

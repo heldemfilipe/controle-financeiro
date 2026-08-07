@@ -62,8 +62,8 @@ function calcPrice(params: LoanParams): AmortizationRow[] {
     const principal = pmt - interest;
     remaining = Math.max(remaining - principal, 0);
 
-    // Calcula mês/ano
-    const totalMonths = (startYear * 12 + startMonth - 1) + (i - 1);
+    // Calcula mês/ano (1ª parcela vence 1 mês após a contratação do empréstimo)
+    const totalMonths = (startYear * 12 + startMonth - 1) + i;
     const month = (totalMonths % 12) + 1;
     const year = Math.floor(totalMonths / 12);
 
@@ -94,7 +94,8 @@ function calcSAC(params: LoanParams): AmortizationRow[] {
     const payment = fixedPrincipal + interest;
     remaining = Math.max(remaining - fixedPrincipal, 0);
 
-    const totalMonths = (startYear * 12 + startMonth - 1) + (i - 1);
+    // 1ª parcela vence 1 mês após a contratação do empréstimo
+    const totalMonths = (startYear * 12 + startMonth - 1) + i;
     const month = (totalMonths % 12) + 1;
     const year = Math.floor(totalMonths / 12);
 

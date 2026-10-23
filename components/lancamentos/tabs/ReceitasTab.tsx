@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus, Pencil, Trash2, TrendingUp, CalendarClock, CalendarX, CalendarPlus } from "lucide-react";
+import { Plus, Pencil, Trash2, TrendingUp, CalendarClock, CalendarX, CalendarPlus, CalendarOff } from "lucide-react";
 import { TotalSummaryCard } from "@/components/lancamentos/TotalSummaryCard";
 import { MONTHS } from "@/types";
 import { formatCurrency, resolveSourceAmount } from "@/lib/utils";
@@ -81,6 +81,12 @@ export function ReceitasTab({
                         <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-violet-50 text-violet-600 dark:bg-violet-900/30 dark:text-violet-400">
                           <CalendarPlus size={10} />
                           Recorrente desde {MONTHS[src.start_month - 1]}/{src.start_year}
+                        </span>
+                      )}
+                      {src.is_recurring !== false && src.stop_month != null && src.stop_year != null && (
+                        <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-rose-50 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400">
+                          <CalendarOff size={10} />
+                          Encerra em {MONTHS[src.stop_month - 1]}/{src.stop_year}
                         </span>
                       )}
                     </div>

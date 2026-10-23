@@ -1,6 +1,7 @@
 "use client";
 
 import { Modal } from "@/components/ui/Modal";
+import { Toggle } from "@/components/ui/Toggle";
 import { MONTHS } from "@/types";
 import type { IncomeSource } from "@/types";
 import type { Owner } from "@/lib/owners";
@@ -27,6 +28,7 @@ function recurrenceOf(v: Partial<IncomeSource>): Recurrence {
 
 export function IncomeModal({ open, onClose, value, onChange, onSave, saving, owners, month, year }: IncomeModalProps) {
   const recurrence = recurrenceOf(value);
+  const hasStop = value.stop_month != null && value.stop_year != null;
 
   function applyRecurrence(mode: Recurrence) {
     if (mode === "always") {
@@ -48,6 +50,7 @@ export function IncomeModal({ open, onClose, value, onChange, onSave, saving, ow
         one_time_month: value.one_time_month ?? month,
         one_time_year:  value.one_time_year  ?? year,
         start_month: null, start_year: null,
+        stop_month: null, stop_year: null,
       });
     }
   }
@@ -139,6 +142,42 @@ export function IncomeModal({ open, onClose, value, onChange, onSave, saving, ow
                 )} />
             </div>
           </div>
+        )}
+
+        {/* Data de término (recorrente) */}
+        {recurrence !== "once" && (
+          <>
+            <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-700/50 rounded-lg px-3 py-2.5">
+              <div>
+                <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Encerra em um mês</p>
+                <p className="text-xs text-slate-400 dark:text-slate-500">Ex: demissão — a receita zera a partir do mês escolhido</p>
+              </div>
+              <Toggle
+                checked={hasStop}
+                onChange={v => onChange(v
+                  ? { stop_month: value.stop_month ?? month, stop_year: value.stop_year ?? year }
+                  : { stop_month: null, stop_year: null }
+                )}
+              />
+            </div>
+            {hasStop && (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label">Sem receita a partir de</label>
+                  <select className="input" value={value.stop_month ?? month}
+                    onChange={e => onChange({ stop_month: Number(e.target.value) })}>
+                    {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="label">Ano</label>
+                  <input className="input" type="number" min="2020" max="2035"
+                    value={value.stop_year ?? year}
+                    onChange={e => onChange({ stop_year: Number(e.target.value) })} />
+                </div>
+              </div>
+            )}
+          </>
         )}
 
         <div className="flex gap-2 pt-2">

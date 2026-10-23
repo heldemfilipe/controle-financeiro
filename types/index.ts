@@ -35,6 +35,9 @@ export interface IncomeSource {
   /** Recorrente que só passa a valer a partir deste mês/ano (null = sempre valeu) */
   start_month: number | null;
   start_year: number | null;
+  /** Recorrente que deixa de valer a partir deste mês/ano (primeiro mês sem a receita; null = nunca termina) */
+  stop_month: number | null;
+  stop_year: number | null;
   created_at: string;
 }
 

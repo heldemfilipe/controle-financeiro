@@ -115,6 +115,7 @@ export default function LancamentosPage() {
         is_recurring: true,
         one_time_month: null, one_time_year: null,
         start_month: null, start_year: null,
+        stop_month: null, stop_year: null,
         ...editIncome,
       });
       setIncomeModal(false); setEditIncome({});

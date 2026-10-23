@@ -196,8 +196,10 @@ export function resolveSourceAmount(
 /**
  * Indica se uma fonte de renda deve aparecer em um dado mês/ano:
  * - Avulsa (is_recurring=false): só no mês/ano exato de one_time_month/year.
- * - Recorrente sem start_month/year: sempre aparece.
- * - Recorrente com start_month/year: aparece a partir desse mês/ano (inclusive).
+ * - Recorrente com start_month/year: só a partir desse mês/ano (inclusive).
+ * - Recorrente com stop_month/year: deixa de valer a partir desse mês/ano (inclusive),
+ *   ou seja, é o primeiro mês sem a receita (ex: demissão).
+ * - Recorrente sem nenhum dos dois: sempre aparece.
  */
 export function isSourceActiveInMonth(
   source: IncomeSource,
@@ -207,9 +209,11 @@ export function isSourceActiveInMonth(
   if (source.is_recurring === false) {
     return source.one_time_month === month && source.one_time_year === year;
   }
-  if (source.start_month != null && source.start_year != null) {
-    return year > source.start_year || (year === source.start_year && month >= source.start_month);
-  }
+  const abs = year * 12 + month;
+  if (source.start_month != null && source.start_year != null
+      && abs < source.start_year * 12 + source.start_month) return false;
+  if (source.stop_month != null && source.stop_year != null
+      && abs >= source.stop_year * 12 + source.stop_month) return false;
   return true;
 }
 

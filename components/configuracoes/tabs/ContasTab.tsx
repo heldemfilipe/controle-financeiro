@@ -2,7 +2,7 @@
 
 import { Plus, FileText, Pencil, Trash2 } from "lucide-react";
 import { Toggle } from "@/components/ui/Toggle";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, isTitheBill } from "@/lib/utils";
 import type { FixedBill } from "@/types";
 
 interface BillGroup {
@@ -15,13 +15,17 @@ interface ContasTabProps {
   billGroups: BillGroup[];
   listBills: FixedBill[];
   totalMonthlyBills: number;
+  /** Estimativa do dízimo (10% da renda base) */
+  titheEstimate: number;
   onAdd: () => void;
   onEdit: (bill: FixedBill) => void;
   onDelete: (bill: FixedBill) => void;
   onToggleActive: (bill: FixedBill) => void;
 }
 
-export function ContasTab({ billGroups, listBills, totalMonthlyBills, onAdd, onEdit, onDelete, onToggleActive }: ContasTabProps) {
+export function ContasTab({ billGroups, listBills, totalMonthlyBills, titheEstimate, onAdd, onEdit, onDelete, onToggleActive }: ContasTabProps) {
+  const amountOf = (b: FixedBill) => (isTitheBill(b) ? titheEstimate : b.amount);
+
   return (
     <div className="max-w-3xl">
       <div className="flex justify-between items-center mb-3">
@@ -41,7 +45,7 @@ export function ContasTab({ billGroups, listBills, totalMonthlyBills, onAdd, onE
               <div className="flex items-center justify-between">
                 <h3 className="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wide">{label}</h3>
                 <span className="text-xs text-slate-500 dark:text-slate-400 font-semibold">
-                  {formatCurrency(groupBills.filter(b => b.active).reduce((s, b) => s + b.amount, 0))}
+                  {formatCurrency(groupBills.filter(b => b.active).reduce((s, b) => s + amountOf(b), 0))}
                 </span>
               </div>
             </div>
@@ -73,6 +77,9 @@ export function ContasTab({ billGroups, listBills, totalMonthlyBills, onAdd, onE
                         )}
                       </div>
                       <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                        {isTitheBill(bill) && (
+                          <span className="text-xs text-violet-600 dark:text-violet-400">10% da renda</span>
+                        )}
                         {bill.due_day && (
                           <span className="text-xs text-slate-400 dark:text-slate-500">Dia {bill.due_day}</span>
                         )}
@@ -88,7 +95,7 @@ export function ContasTab({ billGroups, listBills, totalMonthlyBills, onAdd, onE
                     </div>
                   </div>
                   <div className="flex items-center gap-2 md:gap-3 shrink-0">
-                    <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{formatCurrency(bill.amount)}</p>
+                    <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{isTitheBill(bill) && "≈ "}{formatCurrency(amountOf(bill))}</p>
                     <Toggle size="sm" checked={bill.active} onChange={() => onToggleActive(bill)} />
                     <div className="flex gap-1">
                       <button onClick={() => onEdit(bill)}

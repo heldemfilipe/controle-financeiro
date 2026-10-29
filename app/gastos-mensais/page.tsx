@@ -12,7 +12,7 @@ import {
   getBalanceOverride, upsertBalanceOverride, deleteBalanceOverride,
   getBillAdvancesMadeIn, getBillAdvancesForMonth, createBillAdvance, deleteBillAdvance,
 } from "@/lib/queries";
-import { getCurrentMonth, isOverdue, computeInstallment, getAccConfig, saveAccConfig, resolveSourceAmount } from "@/lib/utils";
+import { getCurrentMonth, isOverdue, computeInstallment, getAccConfig, saveAccConfig, resolveSourceAmount, isTitheBill } from "@/lib/utils";
 import type { AccumuladoConfig } from "@/lib/utils";
 import { computePrevBalance, clearBalanceCache } from "@/lib/balance";
 import { calcTithe } from "@/lib/gastos-mensais/tithe";
@@ -146,8 +146,8 @@ export default function GastosMensaisPage() {
   // ── Valores derivados ──────────────────────────────────────────────────────
 
   const tithe       = calcTithe(incomeSources, monthlyIncomes, month, year, sourceAmounts);
-  const titheBill   = fixedBills.find(b => b.is_tithe);
-  const regularBills = fixedBills.filter(b => !b.is_tithe);
+  const titheBill   = fixedBills.find(b => isTitheBill(b));
+  const regularBills = fixedBills.filter(b => !isTitheBill(b));
 
   // Filtra contas fora do período de parcelas (antes do início ou após o fim)
   const visibleRegularBills = regularBills.filter(bill => {
@@ -175,7 +175,7 @@ export default function GastosMensaisPage() {
   /** Valor efetivo da conta no mês (payment sobrescreve a base) */
   function billAmount(bill: FixedBill): number {
     const p = billPayments.find(p => p.bill_id === bill.id);
-    return p?.amount ?? (bill.is_tithe ? tithe.total : bill.amount);
+    return p?.amount ?? (isTitheBill(bill) ? tithe.total : bill.amount);
   }
 
   /** Valor que entra no cálculo de saldo — 0 se a conta foi adiantada em mês anterior */
@@ -221,7 +221,7 @@ export default function GastosMensaisPage() {
     .filter(a => (fixedBills.find(b => b.id === a.bill_id)?.period ?? "16-30") !== "1-15")
     .reduce((s, a) => s + a.amount, 0);
 
-  // Só adiciona dízimo separado se o bill de dízimo existe (is_tithe=true)
+  // Só adiciona dízimo separado se o bill de dízimo existe (is_tithe ou nome "dízimo")
   // Sem titheBill, a conta de dízimo já está em q1/q2BillsSum como regular
   const q1Total = q1BillsSum + q1CardsSum + q1AdvancesSum + (titheBill && tithePeriod === "1-15"  ? titheDisplayAmt : 0);
   const q2Total = q2BillsSum + q2CardsSum + q2AdvancesSum + (titheBill && tithePeriod === "16-30" ? titheDisplayAmt : 0);

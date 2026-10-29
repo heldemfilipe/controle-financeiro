@@ -11,7 +11,8 @@ import {
 } from "@/lib/queries";
 import { computePrevBalance, clearBalanceCache } from "@/lib/balance";
 import type { MonthlyBillPayment, CardTransaction, BillAdvance } from "@/types";
-import { formatCurrency, getCurrentMonth, getMonthName, filterRegularBills, getAccConfig, computeInstallment, resolveSourceAmount } from "@/lib/utils";
+import { formatCurrency, getCurrentMonth, getMonthName, filterRegularBills, getAccConfig, computeInstallment, resolveSourceAmount, isTitheBill } from "@/lib/utils";
+import { TITHE_RATE } from "@/lib/gastos-mensais/tithe";
 import type { Category, FixedBill, CreditCard as CreditCardType, IncomeSourceAmount } from "@/types";
 
 const FALLBACK_COLORS = [
@@ -117,7 +118,7 @@ export default function AnalisePage() {
       setCategories(cats);
       setCreditCards(cards);
       setAdvancedBillIds(new Set(advancesFor.map(a => a.bill_id)));
-      const tithe = bills.find(b => b.is_tithe) ?? null;
+      const tithe = bills.find(b => isTitheBill(b)) ?? null;
       const regular = filterRegularBills(bills);
       setFixedBills(regular);
       setTitheBill(tithe);
@@ -138,7 +139,7 @@ export default function AnalisePage() {
 
       if (tithe) {
         const tithePayment = payments.find(p => p.bill_id === tithe.id);
-        setTitheAmount(tithePayment?.amount ?? inc * 0.1);
+        setTitheAmount(tithePayment?.amount ?? inc * TITHE_RATE);
       } else {
         setTitheAmount(0);
       }

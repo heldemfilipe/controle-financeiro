@@ -1,7 +1,7 @@
 "use client";
 
 import { Modal } from "@/components/ui/Modal";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, isTitheBill } from "@/lib/utils";
 import type { FixedBill } from "@/types";
 
 export interface EditBillAmountTarget {
@@ -36,7 +36,7 @@ export function EditBillAmountModal({ target, onClose, onChange, titheTotal, inc
             value={target.amount}
             onChange={e => onChange({ amount: e.target.value })}
           />
-          {target.bill.is_tithe && (
+          {isTitheBill(target.bill) && (
             <p className="text-xs text-violet-600 dark:text-violet-400 mt-1">
               Recomendado: {formatCurrency(titheTotal)} (10% de {formatCurrency(incomeTotal)}){" "}
               {Number(target.amount) !== Number(titheTotal.toFixed(2)) && (

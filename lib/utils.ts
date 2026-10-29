@@ -6,9 +6,14 @@ export function sumTransactions(txs: CardTransaction[]): number {
   return txs.reduce((s, t) => s - t.amount, 0);
 }
 
+/** Conta de dízimo: marcada com is_tithe ou nomeada "dízimo"/"dizimo" (cadastro pela tela de contas) */
+export function isTitheBill(bill: Pick<FixedBill, "name" | "is_tithe">): boolean {
+  return !!bill.is_tithe || /d[ií]zimo/i.test(bill.name);
+}
+
 /** Filtra contas que não são dízimo. */
 export function filterRegularBills(bills: FixedBill[]): FixedBill[] {
-  return bills.filter(b => !b.is_tithe);
+  return bills.filter(b => !isTitheBill(b));
 }
 
 export function formatCurrency(value: number): string {

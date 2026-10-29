@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { CategoryBadge } from "@/components/lancamentos/CategoryBadge";
 import { TotalSummaryCard } from "@/components/lancamentos/TotalSummaryCard";
-import { formatCurrency, computeInstallment } from "@/lib/utils";
+import { formatCurrency, computeInstallment, isTitheBill } from "@/lib/utils";
 import type { FixedBill, Category, BillPeriod } from "@/types";
 
 interface ContasTabProps {
@@ -12,14 +12,17 @@ interface ContasTabProps {
   categories: Category[];
   month: number;
   year: number;
+  /** Valor do dízimo no mês (10% da renda ou valor ajustado) */
+  titheAmount: number;
   onAdd: () => void;
   onAddForPeriod: (period: BillPeriod | null) => void;
   onEdit: (bill: FixedBill) => void;
   onDelete: (bill: FixedBill) => void;
 }
 
-export function ContasTab({ fixedBills, categories, month, year, onAdd, onAddForPeriod, onEdit, onDelete }: ContasTabProps) {
+export function ContasTab({ fixedBills, categories, month, year, titheAmount, onAdd, onAddForPeriod, onEdit, onDelete }: ContasTabProps) {
   const [billGroupMode, setBillGroupMode] = useState<"quinzena" | "categoria">("quinzena");
+  const amountOf = (b: FixedBill) => (isTitheBill(b) ? titheAmount : b.amount);
 
   // Filtra contas fora do range ativo de parcelas para o mês selecionado
   const visibleBills = fixedBills.filter(bill => {
@@ -142,12 +145,13 @@ export function ContasTab({ fixedBills, categories, month, year, onAdd, onAddFor
                         if (bill.installment_current) return ` · ${bill.installment_current}/${bill.installment_total}x`;
                         return null;
                       })()}
+                      {isTitheBill(bill) && " · 10% da renda"}
                       {bill.notes && ` · ${bill.notes}`}
                     </p>
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                      {formatCurrency(bill.amount)}
+                      {formatCurrency(amountOf(bill))}
                     </span>
                     <CategoryBadge category={bill.category} categories={categories} size="md" fallback="Outros" />
                     <div className="flex gap-1">
@@ -171,7 +175,7 @@ export function ContasTab({ fixedBills, categories, month, year, onAdd, onAddFor
             <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-700/50 flex justify-between">
               <span className="text-xs text-slate-500 dark:text-slate-400">Subtotal</span>
               <span className="text-sm font-bold text-slate-700 dark:text-slate-200">
-                {formatCurrency(bills.reduce((s, b) => s + b.amount, 0))}
+                {formatCurrency(bills.reduce((s, b) => s + amountOf(b), 0))}
               </span>
             </div>
           </div>
@@ -180,7 +184,7 @@ export function ContasTab({ fixedBills, categories, month, year, onAdd, onAddFor
 
       <TotalSummaryCard
         label="Total Contas"
-        value={visibleBills.reduce((s, b) => s + b.amount, 0)}
+        value={visibleBills.reduce((s, b) => s + amountOf(b), 0)}
         variant="primary"
       />
     </div>

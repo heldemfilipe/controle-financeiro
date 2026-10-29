@@ -9,7 +9,8 @@ import {
   getFixedBills, upsertFixedBill, deleteFixedBill,
   getIncomeSourceAmounts, upsertIncomeSourceAmount, deleteIncomeSourceAmount,
 } from "@/lib/queries";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, isTitheBill } from "@/lib/utils";
+import { TITHE_RATE } from "@/lib/gastos-mensais/tithe";
 import { createSupabaseBrowser } from "@/lib/supabase-browser";
 import { getOwners, saveOwners, slugify, DEFAULT_OWNERS, type Owner } from "@/lib/owners";
 import type { IncomeSource, IncomeSourceAmount, CreditCard as CreditCardType, FixedBill, AppUser } from "@/types";
@@ -389,8 +390,10 @@ export default function ConfiguracoesPage() {
       .filter(g => g.bills.length > 0);
   })();
 
-  const totalMonthlyBills = listBills.filter(b => b.active).reduce((s, b) => s + b.amount, 0);
   const totalMonthlyIncome = sources.filter(s => s.is_recurring !== false).reduce((s, s2) => s + s2.base_amount, 0);
+  // Dízimo é sempre 10% da renda (estimado aqui pela renda base)
+  const titheEstimate = totalMonthlyIncome * TITHE_RATE;
+  const totalMonthlyBills = listBills.filter(b => b.active).reduce((s, b) => s + (isTitheBill(b) ? titheEstimate : b.amount), 0);
 
   return (
     <div className="p-4 md:p-6 min-h-screen">
@@ -474,6 +477,7 @@ export default function ConfiguracoesPage() {
           billGroups={billGroups}
           listBills={listBills}
           totalMonthlyBills={totalMonthlyBills}
+          titheEstimate={titheEstimate}
           onAdd={() => { setEditBill({}); setBillModal(true); }}
           onEdit={(bill) => { setEditBill(bill); setBillModal(true); }}
           onDelete={(bill) => setDeleteConfirm({ type: "bill", id: bill.id, name: bill.name })}

@@ -1,6 +1,7 @@
 import * as XLSX from "xlsx";
 import type { FixedBill } from "@/types";
-import { computeInstallment, resolveSourceAmount, isSourceActiveInMonth } from "@/lib/utils";
+import { computeInstallment, resolveSourceAmount, isSourceActiveInMonth, isTitheBill } from "@/lib/utils";
+import { TITHE_RATE } from "@/lib/gastos-mensais/tithe";
 import { MONTHS } from "@/types";
 import {
   getCardTransactionsByYear,
@@ -44,9 +45,9 @@ export async function exportFinanceiro(year: number) {
   ]);
 
   // Categorias de contas fixas + cartão (+ dízimo, contabilizado como despesa no app)
-  const titheBill   = fixedBills.find(b => b.is_tithe);
+  const titheBill   = fixedBills.find(b => isTitheBill(b));
   const titheCat    = titheBill?.category || "essencial";
-  const billCatKeys = Array.from(new Set(fixedBills.filter(b => !b.is_tithe).map(b => b.category || "outros")));
+  const billCatKeys = Array.from(new Set(fixedBills.filter(b => !isTitheBill(b)).map(b => b.category || "outros")));
   const cardCatKeys = Array.from(new Set(annualTxs.map(t => t.category ?? "Sem categoria")));
   const allCatKeys  = Array.from(new Set([
     ...billCatKeys,
@@ -83,7 +84,7 @@ export async function exportFinanceiro(year: number) {
       const catAmounts: Record<string, number> = {};
       allCatKeys.forEach(cat => {
         const billAmt = fixedBills.filter(b => {
-          if (b.is_tithe) return false;
+          if (isTitheBill(b)) return false;
           if ((b.category || "outros") !== cat) return false;
           if (!b.installment_total) return true;
           if (b.installment_start_month == null || b.installment_start_year == null) return true;
@@ -99,7 +100,7 @@ export async function exportFinanceiro(year: number) {
       // Dízimo: pagamento registrado, senão 10% da receita (mesma regra do app)
       if (titheBill) {
         const tithePay = monthBillPays.find(p => p.bill_id === titheBill.id);
-        catAmounts[titheCat] = (catAmounts[titheCat] ?? 0) + (tithePay?.amount ?? receitas * 0.1);
+        catAmounts[titheCat] = (catAmounts[titheCat] ?? 0) + (tithePay?.amount ?? receitas * TITHE_RATE);
       }
 
       const totalDesp = Object.values(catAmounts).reduce((s, v) => s + v, 0);
@@ -271,7 +272,7 @@ export async function exportMonth(month: number, year: number) {
     rows.push([]);
 
     // 1ª Quinzena
-    const q1Bills    = bills.filter(b => !b.is_tithe && b.period === "1-15");
+    const q1Bills    = bills.filter(b => !isTitheBill(b) && b.period === "1-15");
     const q1Cards    = cards.filter(c => c.due_day <= 15);
     const q1BillsSum = q1Bills.reduce((s, b) => s + billAmt(b), 0);
     const q1CardsSum = q1Cards.reduce((s, c) => s + txs.filter(t => t.card_id === c.id).reduce((a, t) => a - t.amount, 0), 0);
@@ -287,11 +288,11 @@ export async function exportMonth(month: number, year: number) {
     rows.push([]);
 
     // 2ª Quinzena
-    const q2Bills    = bills.filter(b => !b.is_tithe && b.period === "16-30");
+    const q2Bills    = bills.filter(b => !isTitheBill(b) && b.period === "16-30");
     const q2Cards    = cards.filter(c => c.due_day > 15);
     const q2BillsSum = q2Bills.reduce((s, b) => s + billAmt(b), 0);
     const q2CardsSum = q2Cards.reduce((s, c) => s + txs.filter(t => t.card_id === c.id).reduce((a, t) => a - t.amount, 0), 0);
-    const titheBill  = bills.find(b => b.is_tithe);
+    const titheBill  = bills.find(b => isTitheBill(b));
     const titheAmt   = titheBill ? (billPays.find(p => p.bill_id === titheBill.id)?.amount ?? titheBill.amount) : 0;
 
     rows.push(["2ª QUINZENA (dias 16–30)"]);
@@ -318,7 +319,7 @@ export async function exportMonth(month: number, year: number) {
     const headers = ["Nome", "Categoria", "Quinzena", "Vencimento", "Valor (R$)", "Pago", "Parcela"];
     const rows: any[][] = [headers];
 
-    bills.filter(b => !b.is_tithe).forEach(b => {
+    bills.filter(b => !isTitheBill(b)).forEach(b => {
       const p    = billPays.find(p => p.bill_id === b.id);
       const inst = computeInstallment(b, month, year);
       rows.push([

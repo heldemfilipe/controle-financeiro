@@ -15,13 +15,15 @@ import {
   insertCardTransactions,
   getMonthlyIncomes, upsertMonthlyIncome, deleteMonthlyIncome,
   getTransactionSuggestions, upsertMonthlyBillPayment, getIncomeSourceAmounts,
+  getMonthlyBillPayments,
 } from "@/lib/queries";
 import { type TxSuggestion } from "@/components/ui/DescriptionAutocomplete";
-import { getCurrentMonth, resolveSourceAmount } from "@/lib/utils";
+import { getCurrentMonth, resolveSourceAmount, isTitheBill } from "@/lib/utils";
+import { calcTithe } from "@/lib/gastos-mensais/tithe";
 import { getOwners, type Owner } from "@/lib/owners";
 import type {
   IncomeSource, IncomeSourceAmount, FixedBill, CreditCard as CreditCardType,
-  CardTransaction, MonthlyIncome, Category, BillPeriod,
+  CardTransaction, MonthlyIncome, Category, BillPeriod, MonthlyBillPayment,
 } from "@/types";
 
 import { ReceitasTab } from "@/components/lancamentos/tabs/ReceitasTab";
@@ -45,6 +47,7 @@ export default function LancamentosPage() {
   const [incomeSources, setIncomeSources] = useState<IncomeSource[]>([]);
   const [sourceAmounts, setSourceAmounts] = useState<IncomeSourceAmount[]>([]);
   const [fixedBills,    setFixedBills]    = useState<FixedBill[]>([]);
+  const [billPayments,  setBillPayments]  = useState<MonthlyBillPayment[]>([]);
   const [creditCards,   setCreditCards]   = useState<CreditCardType[]>([]);
   const [cardTxs,       setCardTxs]       = useState<CardTransaction[]>([]);
   const [monthlyIncomes,setMonthlyIncomes]= useState<MonthlyIncome[]>([]);
@@ -83,7 +86,7 @@ export default function LancamentosPage() {
   }, []);
 
   async function loadAll() {
-    const [srcs, bills, cats, cards, txs, incomes, srcAmts] = await Promise.all([
+    const [srcs, bills, cats, cards, txs, incomes, srcAmts, payments] = await Promise.all([
       getIncomeSources(month, year),
       getFixedBills(),
       getCategories(),
@@ -91,7 +94,9 @@ export default function LancamentosPage() {
       getCardTransactions(month, year),
       getMonthlyIncomes(month, year),
       getIncomeSourceAmounts(),
+      getMonthlyBillPayments(month, year),
     ]);
+    setBillPayments(payments);
     setIncomeSources(srcs);
     setFixedBills(bills);
     setCategories(cats);
@@ -339,6 +344,11 @@ export default function LancamentosPage() {
     setLoading(false);
   }
 
+  // Mesmo valor da tela de Gastos Mensais: valor ajustado no mês ou 10% da renda
+  const titheBill = fixedBills.find(isTitheBill);
+  const titheAmount = billPayments.find(p => p.bill_id === titheBill?.id)?.amount
+    ?? calcTithe(incomeSources, monthlyIncomes, month, year, sourceAmounts).total;
+
   const tabs: { key: Tab; label: string; icon: any }[] = [
     { key: "receitas", label: "Receitas", icon: TrendingUp },
     { key: "contas", label: "Contas", icon: FileText },
@@ -391,6 +401,7 @@ export default function LancamentosPage() {
           categories={categories}
           month={month}
           year={year}
+          titheAmount={titheAmount}
           onAdd={() => { setEditBill({}); setBillModal(true); }}
           onAddForPeriod={(period: BillPeriod | null) => {
             setEditBill({ period: period as any });

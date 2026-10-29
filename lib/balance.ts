@@ -7,6 +7,7 @@ import {
 } from "./queries";
 import { computeInstallment, getAccConfig, resolveSourceAmount, isSourceActiveInMonth } from "./utils";
 import type { AccumuladoConfig } from "./utils";
+import { TITHE_RATE } from "./gastos-mensais/tithe";
 import type { FixedBill, IncomeSource, IncomeSourceAmount, MonthlyBalanceOverride, BillAdvance } from "@/types";
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
@@ -120,7 +121,7 @@ export async function computeMonthBalance(
 
   // Dízimo
   const tithePayment = titheBill ? billPayments.find(b => b.bill_id === titheBill.id) : null;
-  const titheAmt = tithePayment?.amount ?? (titheBill ? totalIncome * 0.1 : 0);
+  const titheAmt = tithePayment?.amount ?? (titheBill ? totalIncome * TITHE_RATE : 0);
   if (titheBill) {
     addBillCat(titheAmt, titheBill.category ?? "essencial");
   }

@@ -38,7 +38,16 @@ export function EditBillAmountModal({ target, onClose, onChange, titheTotal, inc
           />
           {target.bill.is_tithe && (
             <p className="text-xs text-violet-600 dark:text-violet-400 mt-1">
-              Calculado automaticamente: {formatCurrency(titheTotal)} (10% de {formatCurrency(incomeTotal)})
+              Recomendado: {formatCurrency(titheTotal)} (10% de {formatCurrency(incomeTotal)}){" "}
+              {Number(target.amount) !== Number(titheTotal.toFixed(2)) && (
+                <button
+                  type="button"
+                  onClick={() => onChange({ amount: titheTotal.toFixed(2) })}
+                  className="underline font-medium"
+                >
+                  Usar 10%
+                </button>
+              )}
             </p>
           )}
         </div>

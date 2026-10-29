@@ -398,6 +398,8 @@ export default function GastosMensaisPage() {
             titheDisplayAmt={titheDisplayAmt}
             tithePayment={tithePayment}
             tithe={tithe}
+            month={month}
+            year={year}
             onEdit={openEdit}
             onToggle={handleToggleBill}
           />

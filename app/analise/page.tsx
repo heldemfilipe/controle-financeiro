@@ -7,11 +7,13 @@ import { MonthSelector } from "@/components/ui/MonthSelector";
 import {
   getFixedBills, getCategories, getCardTransactions,
   getMonthlyBillPayments, getMonthlyIncomes, getIncomeSources,
-  getCreditCards, getBillAdvancesForMonth, getIncomeSourceAmounts,
+  getCreditCards, getBillAdvancesForMonth, getBillAdvancesMadeIn, getIncomeSourceAmounts,
+  getBalanceOverride,
 } from "@/lib/queries";
 import { computePrevBalance, clearBalanceCache } from "@/lib/balance";
-import type { MonthlyBillPayment, CardTransaction, BillAdvance } from "@/types";
+import type { MonthlyBillPayment, MonthlyBalanceOverride, CardTransaction, BillAdvance } from "@/types";
 import { formatCurrency, getCurrentMonth, getMonthName, filterRegularBills, isBillActiveInMonth, resolveSourceAmount, isTitheBill } from "@/lib/utils";
+import { buildCategoryMap, sumCategories } from "@/lib/analise";
 import { TITHE_RATE } from "@/lib/gastos-mensais/tithe";
 import type { Category, FixedBill, CreditCard as CreditCardType, IncomeSourceAmount } from "@/types";
 
@@ -51,7 +53,7 @@ function groupCardByCat(txs: CardTransaction[], cards: CreditCardType[]): Record
   const result: Record<string, CardCatData> = {};
   Object.entries(byCardByCat).forEach(([cat, cardMap]) => {
     const byCard: CardDetail[] = Object.entries(cardMap)
-      .filter(([, v]) => v.amount > 0)
+      .filter(([, v]) => v.amount !== 0)
       .map(([cardId, { amount, transactions }]) => {
         const card = cards.find(c => c.id === cardId);
         return {
@@ -64,10 +66,14 @@ function groupCardByCat(txs: CardTransaction[], cards: CreditCardType[]): Record
       })
       .sort((a, b) => b.amount - a.amount);
     const total = byCard.reduce((s, c) => s + c.amount, 0);
-    if (total > 0) result[cat] = { total, byCard };
+    if (total !== 0) result[cat] = { total, byCard };
   });
 
   return result;
+}
+
+function cardTotalsByCategory(byCat: Record<string, CardCatData>): Record<string, number> {
+  return Object.fromEntries(Object.entries(byCat).map(([cat, { total }]) => [cat, total]));
 }
 
 export default function AnalisePage() {
@@ -79,11 +85,14 @@ export default function AnalisePage() {
   const [categories,     setCategories]    = useState<Category[]>([]);
   const [sourceAmounts,  setSourceAmounts] = useState<IncomeSourceAmount[]>([]);
   const [creditCards,    setCreditCards]   = useState<CreditCardType[]>([]);
+  const [allBills,       setAllBills]       = useState<FixedBill[]>([]);
   const [fixedBills,     setFixedBills]     = useState<FixedBill[]>([]);
   const [titheBill,      setTitheBill]      = useState<FixedBill | null>(null);
   const [titheAmount,    setTitheAmount]    = useState(0);
   const [monthlyBillAmt, setMonthlyBillAmt] = useState<Record<string, number>>({});
   const [advancedBillIds, setAdvancedBillIds] = useState<Set<string>>(new Set());
+  const [advancesMade,   setAdvancesMade]   = useState<BillAdvance[]>([]);
+  const [balanceOverride, setBalanceOverride] = useState<MonthlyBalanceOverride | null>(null);
   const [cardByCat,      setCardByCat]      = useState<Record<string, CardCatData>>({});
   const [prevCatMap,     setPrevCatMap]     = useState<Record<string, number>>({});
   const [incomeTotal,    setIncomeTotal]    = useState(0);
@@ -99,7 +108,8 @@ export default function AnalisePage() {
     const py = month === 1 ? year - 1 : year;
     try {
       const [cats, bills, payments, txs, sources, incomes, cards, advancesFor, srcAmts,
-             prevPayments, prevTxs, prevAdvancesFor] = await Promise.all([
+             prevPayments, prevTxs, prevAdvancesFor, madeNow, madePrev, prevSources, prevIncomes,
+             override] = await Promise.all([
         getCategories(),
         getFixedBills(),
         getMonthlyBillPayments(month, year),
@@ -112,8 +122,15 @@ export default function AnalisePage() {
         getMonthlyBillPayments(pm, py),
         getCardTransactions(pm, py),
         getBillAdvancesForMonth(pm, py),
+        getBillAdvancesMadeIn(month, year),
+        getBillAdvancesMadeIn(pm, py),
+        getIncomeSources(pm, py),
+        getMonthlyIncomes(pm, py),
+        getBalanceOverride(month, year),
       ]);
       setSourceAmounts(srcAmts);
+      setAdvancesMade(madeNow);
+      setBalanceOverride(override);
 
       setCategories(cats);
       setCreditCards(cards);
@@ -121,6 +138,7 @@ export default function AnalisePage() {
       const tithe = bills.find(b => isTitheBill(b) && isBillActiveInMonth(b, month, year)) ?? null;
       const regular = filterRegularBills(bills);
       setFixedBills(regular);
+      setAllBills(bills);
       setTitheBill(tithe);
 
       const billAmts: Record<string, number> = {};
@@ -151,22 +169,25 @@ export default function AnalisePage() {
         const p = prevPayments.find((pp: MonthlyBillPayment) => pp.bill_id === b.id);
         prevBillAmts[b.id] = p?.amount ?? b.amount;
       });
-      const prevVisibleBills = regular.filter(b => isBillActiveInMonth(b, pm, py));
-      const prevMap: Record<string, number> = {};
-      prevVisibleBills.forEach(b => {
-        if (prevAdvancedIds.has(b.id)) return;
-        const cat = b.category || "outros";
-        prevMap[cat] = (prevMap[cat] ?? 0) + (prevBillAmts[b.id] ?? b.amount);
-      });
-      if (tithe) {
-        const prevTithePayment = prevPayments.find((pp: MonthlyBillPayment) => pp.bill_id === tithe.id);
-        const prevTitheAmt = prevTithePayment?.amount ?? tithe.amount;
-        prevMap[tithe.category ?? "essencial"] = (prevMap[tithe.category ?? "essencial"] ?? 0) + prevTitheAmt;
-      }
-      Object.entries(groupCardByCat(prevTxs, cards)).forEach(([cat, { total }]) => {
-        prevMap[cat] = (prevMap[cat] ?? 0) + total;
-      });
-      setPrevCatMap(prevMap);
+      const prevIncomeTotal = prevSources.reduce((s, src) => {
+        const mi = prevIncomes.find(i => i.source_id === src.id);
+        return s + (mi?.amount ?? resolveSourceAmount(src, pm, py, srcAmts));
+      }, 0);
+      const prevTithe = bills.find(b => isTitheBill(b) && isBillActiveInMonth(b, pm, py));
+      const prevTithePayment = prevTithe
+        && prevPayments.find((pp: MonthlyBillPayment) => pp.bill_id === prevTithe.id);
+      setPrevCatMap(buildCategoryMap({
+        bills: regular.filter(b => isBillActiveInMonth(b, pm, py)),
+        amountOf: b => prevBillAmts[b.id] ?? b.amount,
+        advancedBillIds: prevAdvancedIds,
+        advancesMade: madePrev.map(a => ({
+          category: bills.find(b => b.id === a.bill_id)?.category, amount: a.amount,
+        })),
+        tithe: prevTithe
+          ? { category: prevTithe.category, amount: prevTithePayment?.amount ?? prevIncomeTotal * TITHE_RATE }
+          : null,
+        cardTotals: cardTotalsByCategory(groupCardByCat(prevTxs, cards)),
+      }));
 
       const prev = await computePrevBalance(month, year);
       setPrevBalance(prev);
@@ -179,23 +200,19 @@ export default function AnalisePage() {
 
   const visibleFixedBills = fixedBills.filter(b => isBillActiveInMonth(b, month, year));
 
-  const categoryMap: Record<string, number> = {};
-  visibleFixedBills.forEach(b => {
-    if (advancedBillIds.has(b.id)) return;
-    const amt = monthlyBillAmt[b.id] ?? b.amount;
-    const cat = b.category || "outros";
-    categoryMap[cat] = (categoryMap[cat] ?? 0) + amt;
-  });
-  if (titheBill && titheAmount > 0) {
-    const titheCat = titheBill.category || "essencial";
-    categoryMap[titheCat] = (categoryMap[titheCat] ?? 0) + titheAmount;
-  }
-  Object.entries(cardByCat).forEach(([cat, { total }]) => {
-    categoryMap[cat] = (categoryMap[cat] ?? 0) + total;
+  const advanceBill = (advance: BillAdvance) => allBills.find(b => b.id === advance.bill_id);
+
+  const categoryMap = buildCategoryMap({
+    bills: visibleFixedBills,
+    amountOf: b => monthlyBillAmt[b.id] ?? b.amount,
+    advancedBillIds,
+    advancesMade: advancesMade.map(a => ({ category: advanceBill(a)?.category, amount: a.amount })),
+    tithe: titheBill ? { category: titheBill.category, amount: titheAmount } : null,
+    cardTotals: cardTotalsByCategory(cardByCat),
   });
 
   const catList = Object.entries(categoryMap)
-    .filter(([, v]) => v > 0)
+    .filter(([, v]) => v !== 0)
     .map(([name, value], idx) => ({
       name: name.charAt(0).toUpperCase() + name.slice(1),
       rawName: name,
@@ -204,10 +221,13 @@ export default function AnalisePage() {
     }))
     .sort((a, b) => b.value - a.value);
 
-  const totalExpenses = catList.reduce((s, d) => s + d.value, 0);
+  const totalExpenses = sumCategories(categoryMap);
   const cardTotal     = Object.values(cardByCat).reduce((s, v) => s + v.total, 0);
   const monthBalance  = incomeTotal - totalExpenses;
-  const accBalance    = prevBalance + monthBalance;
+  // Igual ao Resumo Mensal: um ajuste manual no mês substitui o acumulado
+  const accBalance    = balanceOverride
+    ? (balanceOverride.auto_zero ? 0 : balanceOverride.override_amount)
+    : prevBalance + monthBalance;
 
   return (
     <div className="p-3 md:p-6 min-h-screen">
@@ -269,6 +289,10 @@ export default function AnalisePage() {
                     !advancedBillIds.has(b.id) &&
                     (monthlyBillAmt[b.id] ?? b.amount) > 0
                   );
+                  const showTithe = !!titheBill && titheAmount > 0
+                    && (titheBill.category || "essencial") === entry.rawName;
+                  const advances = advancesMade.filter(a =>
+                    (advanceBill(a)?.category || "outros") === entry.rawName);
                   const cardData = cardByCat[entry.rawName];
                   const prevVal = prevCatMap[entry.rawName];
                   const delta = prevVal != null ? entry.value - prevVal : null;
@@ -305,15 +329,25 @@ export default function AnalisePage() {
                       {/* Barra */}
                       <div className="h-2 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden mb-1.5">
                         <div className="h-2 rounded-full transition-all"
-                          style={{ width: `${pct}%`, backgroundColor: entry.color }} />
+                          style={{ width: `${Math.max(pct, 0)}%`, backgroundColor: entry.color }} />
                       </div>
 
                       {/* Itens compactos: contas + cartões por nome */}
-                      {(bills.length > 0 || cardData) && (
+                      {(bills.length > 0 || showTithe || advances.length > 0 || cardData) && (
                         <div className="flex flex-wrap gap-x-3 gap-y-0.5 pl-5">
+                          {showTithe && (
+                            <span className="text-xs text-slate-400 dark:text-slate-500">
+                              {titheBill.name} {formatCurrency(titheAmount)}
+                            </span>
+                          )}
                           {bills.map(b => (
                             <span key={b.id} className="text-xs text-slate-400 dark:text-slate-500">
                               {b.name} {formatCurrency(monthlyBillAmt[b.id] ?? b.amount)}
+                            </span>
+                          ))}
+                          {advances.map(a => (
+                            <span key={a.id} className="text-xs text-slate-400 dark:text-slate-500">
+                              Adiantamento {advanceBill(a)?.name} {formatCurrency(a.amount)}
                             </span>
                           ))}
                           {cardData && cardData.byCard.map(c => {

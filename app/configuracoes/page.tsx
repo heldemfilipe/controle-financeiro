@@ -27,7 +27,6 @@ import { BillModal } from "@/components/configuracoes/BillModal";
 import { NewUserModal } from "@/components/configuracoes/NewUserModal";
 import { EditUserModal } from "@/components/configuracoes/EditUserModal";
 import { ChangePasswordModal } from "@/components/configuracoes/ChangePasswordModal";
-import { ResetPasswordModal } from "@/components/configuracoes/ResetPasswordModal";
 import { BanUserModal } from "@/components/configuracoes/BanUserModal";
 import { HistoryModal, type NewAmountForm } from "@/components/configuracoes/HistoryModal";
 import { DeleteConfirmModal, type DeleteTarget } from "@/components/configuracoes/DeleteConfirmModal";
@@ -72,7 +71,6 @@ export default function ConfiguracoesPage() {
   const [usersLoading, setUsersLoading] = useState(false);
   const [userModal, setUserModal] = useState(false);
   const [editUserModal, setEditUserModal] = useState(false);
-  const [resetConfirm, setResetConfirm] = useState<AppUser | null>(null);
   const [banConfirm, setBanConfirm] = useState<AppUser | null>(null);
   const [newUser, setNewUser] = useState({ email: "", password: "", display_name: "", role: "user" as "admin" | "user" });
   const [editingUser, setEditingUser] = useState<AppUser | null>(null);
@@ -281,13 +279,6 @@ export default function ConfiguracoesPage() {
     setBanConfirm(null);
     await loadUsers();
     showFeedback(user.banned ? "Usuário ativado!" : "Usuário desativado!");
-  }
-
-  async function sendResetPassword(user: AppUser) {
-    const res = await fetch(`/api/admin/users/${user.id}`, { method: "POST" });
-    setResetConfirm(null);
-    if (res.ok) showFeedback("E-mail de redefinição enviado!");
-    else showFeedback("Erro ao enviar e-mail");
   }
 
   async function changePassword() {
@@ -512,7 +503,6 @@ export default function ConfiguracoesPage() {
           onAdd={() => { setNewUser({ email: "", password: "", display_name: "", role: "user" }); setUserModal(true); }}
           onEdit={(u) => { setEditingUser(u); setEditUserData({ display_name: u.display_name, role: u.role }); setEditUserModal(true); }}
           onChangePassword={(u) => { setChangePasswordUser(u); setNewPassword(""); setShowChangePassword(false); }}
-          onResetPassword={setResetConfirm}
           onBan={setBanConfirm}
         />
       )}
@@ -579,12 +569,6 @@ export default function ConfiguracoesPage() {
         saving={loading}
         showPassword={showChangePassword}
         onToggleShowPassword={() => setShowChangePassword(v => !v)}
-      />
-
-      <ResetPasswordModal
-        user={resetConfirm}
-        onClose={() => setResetConfirm(null)}
-        onConfirm={sendResetPassword}
       />
 
       <BanUserModal

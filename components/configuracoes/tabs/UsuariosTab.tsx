@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus, User, ShieldCheck, ShieldX, Pencil, Lock, RotateCcw, Users } from "lucide-react";
+import { Plus, User, ShieldCheck, ShieldX, Pencil, Lock, Users } from "lucide-react";
 import type { AppUser } from "@/types";
 
 interface UsuariosTabProps {
@@ -9,11 +9,10 @@ interface UsuariosTabProps {
   onAdd: () => void;
   onEdit: (user: AppUser) => void;
   onChangePassword: (user: AppUser) => void;
-  onResetPassword: (user: AppUser) => void;
   onBan: (user: AppUser) => void;
 }
 
-export function UsuariosTab({ users, usersLoading, onAdd, onEdit, onChangePassword, onResetPassword, onBan }: UsuariosTabProps) {
+export function UsuariosTab({ users, usersLoading, onAdd, onEdit, onChangePassword, onBan }: UsuariosTabProps) {
   return (
     <div className="max-w-3xl">
       <div className="flex justify-between items-center mb-3">
@@ -88,12 +87,6 @@ export function UsuariosTab({ users, usersLoading, onAdd, onEdit, onChangePasswo
                     title="Definir nova senha"
                     className="p-2 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors">
                     <Lock size={14} className="text-primary-500" />
-                  </button>
-                  <button
-                    onClick={() => onResetPassword(u)}
-                    title="Enviar e-mail de reset"
-                    className="p-2 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-lg transition-colors">
-                    <RotateCcw size={14} className="text-amber-500" />
                   </button>
                   <button
                     onClick={() => onBan(u)}

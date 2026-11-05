@@ -206,7 +206,7 @@ export default function SimuladorPage() {
               <div className="text-center py-10 text-slate-400 dark:text-slate-500">
                 <FlaskConical size={32} className="mx-auto mb-3 opacity-30" />
                 <p className="text-sm font-medium">Nenhuma modificação ainda</p>
-                <p className="text-xs mt-1 opacity-70">Clique em "Adicionar" para criar um cenário hipotético</p>
+                <p className="text-xs mt-1 opacity-70">Clique em &ldquo;Adicionar&rdquo; para criar um cenário hipotético</p>
                 <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 text-left max-w-lg mx-auto">
                   {([
                     ["Quitar empréstimo", "Veja quanto sobra sem a parcela mensal"],

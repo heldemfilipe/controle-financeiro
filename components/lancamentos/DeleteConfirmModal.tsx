@@ -47,16 +47,16 @@ export function DeleteConfirmModal({ target, onClose, onConfirm, saving, month, 
           {/* Descrição */}
           <p className="text-sm text-slate-600 dark:text-slate-300">
             {target.type === "income" && (
-              <>{target.recurring ? "Como deseja remover" : "Remover"} a receita <strong>"{target.label}"</strong>?</>
+              <>{target.recurring ? "Como deseja remover" : "Remover"} a receita <strong>&ldquo;{target.label}&rdquo;</strong>?</>
             )}
             {target.type === "bill" && (
-              <><strong>"{target.bill.name}"</strong> é uma conta recorrente. Como deseja remover?</>
+              <><strong>&ldquo;{target.bill.name}&rdquo;</strong> é uma conta recorrente. Como deseja remover?</>
             )}
             {target.type === "tx" && target.tx.installment_total > 1 && (
-              <>Parcela <strong>{target.tx.installment_current}/{target.tx.installment_total}</strong> de <strong>"{target.tx.description}"</strong>. O que deseja fazer?</>
+              <>Parcela <strong>{target.tx.installment_current}/{target.tx.installment_total}</strong> de <strong>&ldquo;{target.tx.description}&rdquo;</strong>. O que deseja fazer?</>
             )}
             {target.type === "tx" && target.tx.installment_total <= 1 && (
-              <>Remover o lançamento <strong>"{target.tx.description}"</strong>?</>
+              <>Remover o lançamento <strong>&ldquo;{target.tx.description}&rdquo;</strong>?</>
             )}
           </p>
 

@@ -26,8 +26,8 @@ export function IntegrantesTab({
     <div className="max-w-xl">
       <div className="mb-4">
         <p className="text-xs text-slate-500 dark:text-slate-400">
-          Cadastre os integrantes da família. Eles serão usados como "titular" nos cartões e receitas.
-          Os dados ficam salvos localmente neste dispositivo.
+          Cadastre os integrantes da família. Eles serão usados como &ldquo;titular&rdquo; nos cartões e receitas
+          e aparecem em todos os aparelhos.
         </p>
       </div>
 

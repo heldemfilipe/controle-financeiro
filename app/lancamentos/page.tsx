@@ -116,7 +116,7 @@ export default function LancamentosPage() {
   // ── Income ──────────────────────────────────────────────────────────────────
   async function saveIncome() {
     const errors: Record<string, string> = {};
-    if (!editIncome.name?.trim()) errors.name = "Nome obrigatorio";
+    if (!editIncome.name?.trim()) errors.name = "Nome obrigatório";
     if (!editIncome.base_amount || editIncome.base_amount <= 0) errors.base_amount = "Valor deve ser positivo";
     if (Object.keys(errors).length) { setFormErrors(errors); return; }
     setFormErrors({});
@@ -193,7 +193,7 @@ export default function LancamentosPage() {
   // ── Bills ────────────────────────────────────────────────────────────────────
   async function saveBill() {
     const errors: Record<string, string> = {};
-    if (!editBill.name?.trim()) errors.name = "Nome obrigatorio";
+    if (!editBill.name?.trim()) errors.name = "Nome obrigatório";
     if (!editBill.amount || editBill.amount <= 0) errors.amount = "Valor deve ser positivo";
     if (Object.keys(errors).length) { setFormErrors(errors); return; }
     setFormErrors({});
@@ -221,26 +221,26 @@ export default function LancamentosPage() {
   // ── Cards ────────────────────────────────────────────────────────────────────
   async function saveCard() {
     const errors: Record<string, string> = {};
-    if (!editCard.name?.trim()) errors.name = "Nome obrigatorio";
-    if (!editCard.due_day) errors.due_day = "Dia de vencimento obrigatorio";
+    if (!editCard.name?.trim()) errors.name = "Nome obrigatório";
+    if (!editCard.due_day) errors.due_day = "Dia de vencimento obrigatório";
     if (Object.keys(errors).length) { setFormErrors(errors); return; }
     setFormErrors({});
     setLoading(true);
     try {
       await upsertCreditCard({ color: "#6366f1", active: true, ...editCard });
       setCardModal(false); setEditCard({});
-      toast(editCard.id ? "Cartao atualizado" : "Cartao adicionado");
+      toast(editCard.id ? "Cartão atualizado" : "Cartão adicionado");
       await loadAll();
-    } catch { toast("Erro ao salvar cartao", "error"); }
+    } catch { toast("Erro ao salvar cartão", "error"); }
     setLoading(false);
   }
 
   // ── Card Transactions ────────────────────────────────────────────────────────
   async function saveTx() {
     const errors: Record<string, string> = {};
-    if (!editTx.card_id) errors.card_id = "Selecione um cartao";
-    if (!editTx.description?.trim()) errors.description = "Descricao obrigatoria";
-    if (!editTx.amount) errors.amount = "Valor obrigatorio";
+    if (!editTx.card_id) errors.card_id = "Selecione um cartão";
+    if (!editTx.description?.trim()) errors.description = "Descrição obrigatória";
+    if (!editTx.amount) errors.amount = "Valor obrigatório";
     if (Object.keys(errors).length) { setFormErrors(errors); return; }
     setFormErrors({});
     setLoading(true);
@@ -308,7 +308,7 @@ export default function LancamentosPage() {
       getTransactionSuggestions().then(setTxSuggestions).catch(console.error);
     } catch (err) {
       console.error("Erro ao salvar lançamento:", err);
-      alert("Erro ao salvar. Verifique o console.");
+      toast("Erro ao salvar lançamento", "error");
     } finally {
       setLoading(false);
     }

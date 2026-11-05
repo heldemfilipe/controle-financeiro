@@ -359,7 +359,7 @@ export default function DicasPage() {
   }
 
   const comprometimento = incomeTotal > 0 ? (totalExpenses / incomeTotal) * 100 : 0;
-  const { label: scoreText, color: scoreColor, bg: scoreBg } = scoreLabel(score);
+  const { label: scoreText, color: scoreColor } = scoreLabel(score);
 
   return (
     <div className="p-3 md:p-6 min-h-screen">

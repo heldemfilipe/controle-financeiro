@@ -5,12 +5,12 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   LayoutDashboard, PlusCircle, CalendarDays, CreditCard,
-  TrendingUp, DollarSign, BarChart2, AreaChart, Settings,
+  TrendingUp, BarChart2, AreaChart, Settings,
   Sun, Moon, PieChart, LogOut, User, Tag, FlaskConical, Lightbulb, Package,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/components/providers/ThemeProvider";
-import { createSupabaseBrowser } from "@/lib/supabase-browser";
+import { supabase } from "@/lib/supabase";
 import pkg from "@/package.json";
 
 const navGroups = [
@@ -55,14 +55,12 @@ export function Sidebar() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
 
   useEffect(() => {
-    const supabase = createSupabaseBrowser();
     supabase.auth.getUser().then(({ data }) => {
       setUserEmail(data.user?.email ?? null);
     });
   }, []);
 
   async function handleLogout() {
-    const supabase = createSupabaseBrowser();
     await supabase.auth.signOut();
     router.push("/login");
     router.refresh();

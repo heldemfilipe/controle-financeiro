@@ -12,7 +12,6 @@ import {
   getMonthlyIncomes,
   getCreditCards,
   getCardTransactions,
-  getMonthlyCardPayments,
 } from "@/lib/queries";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

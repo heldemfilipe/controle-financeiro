@@ -39,10 +39,6 @@ export function saveOwners(owners: Owner[]): void {
   }
 }
 
-export function getOwnerById(id: string): Owner | undefined {
-  return getOwners().find(o => o.id === id);
-}
-
 /**
  * Converte um nome em slug para usar como ID no banco.
  * Ex: "João Silva" → "joao_silva"

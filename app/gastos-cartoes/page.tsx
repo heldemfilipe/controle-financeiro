@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import {
-  CreditCard, TrendingDown, Hash, Award,
+  TrendingDown,
   ChevronLeft, ChevronRight, ShoppingCart,
 } from "lucide-react";
 import {

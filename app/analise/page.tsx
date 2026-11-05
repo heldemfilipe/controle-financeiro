@@ -16,7 +16,7 @@ import { formatCurrency, getCurrentMonth, getMonthName, filterRegularBills, isBi
 import { buildCategoryMap, sumCategories } from "@/lib/analise";
 import { useLatestLoad } from "@/lib/useLatestLoad";
 import { TITHE_RATE } from "@/lib/gastos-mensais/tithe";
-import type { Category, FixedBill, CreditCard as CreditCardType, IncomeSourceAmount } from "@/types";
+import type { Category, FixedBill, CreditCard as CreditCardType } from "@/types";
 
 const FALLBACK_COLORS = [
   "#6366f1", "#f59e0b", "#10b981", "#ef4444", "#8b5cf6",
@@ -84,8 +84,6 @@ export default function AnalisePage() {
   const [loading, setLoading] = useState(true);
 
   const [categories,     setCategories]    = useState<Category[]>([]);
-  const [sourceAmounts,  setSourceAmounts] = useState<IncomeSourceAmount[]>([]);
-  const [creditCards,    setCreditCards]   = useState<CreditCardType[]>([]);
   const [allBills,       setAllBills]       = useState<FixedBill[]>([]);
   const [fixedBills,     setFixedBills]     = useState<FixedBill[]>([]);
   const [titheBill,      setTitheBill]      = useState<FixedBill | null>(null);
@@ -133,12 +131,10 @@ export default function AnalisePage() {
         getBalanceOverride(month, year),
       ]);
       if (!isLatest()) return;
-      setSourceAmounts(srcAmts);
       setAdvancesMade(madeNow);
       setBalanceOverride(override);
 
       setCategories(cats);
-      setCreditCards(cards);
       setAdvancedBillIds(new Set(advancesFor.map(a => a.bill_id)));
       const tithe = bills.find(b => isTitheBill(b) && isBillActiveInMonth(b, month, year)) ?? null;
       const regular = filterRegularBills(bills);

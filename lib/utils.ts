@@ -40,12 +40,6 @@ export function formatCurrency(value: number): string {
   }).format(value);
 }
 
-export function formatDate(date: string | null): string {
-  if (!date) return "-";
-  const [year, month, day] = date.split("-");
-  return `${day}/${month}/${year}`;
-}
-
 export function getMonthName(month: number): string {
   return MONTHS[month - 1] || "";
 }
@@ -76,25 +70,6 @@ export function isOverdue(dueDay: number, month: number, year: number): boolean 
   if (year === currentYear && month < currentMonth) return true;
   if (year === currentYear && month === currentMonth && dueDay < currentDay) return true;
   return false;
-}
-
-/**
- * Retorna true se o vencimento é hoje ou nos próximos `days` dias (default 2).
- * Só considera o mês/ano atual — meses futuros ou passados nunca são "próximos".
- */
-export function isDueSoon(
-  dueDay: number | null,
-  month: number,
-  year: number,
-  days = 2,
-): boolean {
-  if (!dueDay) return false;
-  const now = new Date();
-  // Só aplica no mês/ano sendo visualizado quando coincide com hoje
-  if (now.getFullYear() !== year || now.getMonth() + 1 !== month) return false;
-  const today = now.getDate();
-  const diff = dueDay - today;
-  return diff >= 0 && diff <= days;
 }
 
 export type DueUrgency = "overdue" | "today" | "tomorrow" | "soon" | "later";

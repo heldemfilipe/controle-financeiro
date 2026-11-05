@@ -530,21 +530,6 @@ export async function deleteMonthlyIncome(sourceId: string, month: number, year:
   if (error) throw error;
 }
 
-export async function toggleIncomeReceived(
-  sourceId: string, month: number, year: number, received: boolean, amount: number
-) {
-  const { data, error } = await supabase
-    .from("monthly_incomes")
-    .upsert({
-      source_id: sourceId, month, year, received, amount,
-      received_date: received ? getLocalDateString() : null,
-    }, { onConflict: "source_id,month,year" })
-    .select()
-    .single();
-  if (error) throw error;
-  return data;
-}
-
 // ─── Balance Overrides ───────────────────────────────────────────────────────
 
 export async function getBalanceOverride(month: number, year: number) {

@@ -99,8 +99,21 @@ npm install
 2. No **SQL Editor**, execute os arquivos na ordem:
 
 ```
-supabase/schema.sql   ← cria tabelas, índices e políticas RLS
-supabase/seed.sql     ← dados de exemplo (opcional)
+supabase/schema.sql                         ← tabelas principais, índices e RLS
+supabase/migration_v2.sql                   ← categorias
+supabase/migration_v3.sql                   ← adiantamentos de contas
+supabase/migration_balance_overrides.sql    ← ajustes manuais de saldo
+supabase/migration_income_source_amounts.sql
+supabase/migration_income_start_date.sql
+supabase/migration_income_end_date.sql
+supabase/migration_is_tithe.sql
+supabase/migration_saved_products.sql       ← produtos salvos
+supabase/migration_purchase_id.sql          ← compra de cada parcela
+supabase/migration_bill_end_date.sql
+supabase/migration_bill_start_date.sql
+supabase/migration_app_settings.sql         ← configurações entre aparelhos
+supabase/migration_security.sql             ← restringe as tabelas a usuários logados
+supabase/seed.sql                           ← dados de exemplo (opcional)
 ```
 
 ### 3. Variáveis de ambiente
@@ -126,6 +139,13 @@ npm run dev
 # Acesse http://localhost:3000
 ```
 
+### 5. Testes e lint
+
+```bash
+npm test
+npm run lint
+```
+
 ---
 
 ## 🔐 Configurar o primeiro Admin
@@ -136,7 +156,7 @@ npm run dev
 
 ```sql
 UPDATE auth.users
-SET raw_user_meta_data = raw_user_meta_data || '{"role": "admin"}'::jsonb
+SET raw_app_meta_data = COALESCE(raw_app_meta_data, '{}'::jsonb) || '{"role": "admin"}'::jsonb
 WHERE email = 'seu@email.com';
 ```
 
@@ -159,6 +179,8 @@ A partir daí, novos usuários são criados e gerenciados diretamente pelo app (
 | `monthly_bill_payments` | Status pago/pendente das contas por mês (sobrescreve valor base) |
 | `monthly_card_payments` | Status pago/pendente das faturas por mês |
 | `monthly_incomes` | Recebimentos mensais por fonte (sobrescreve valor base) |
+| `saved_products` | Alterações nos produtos do preenchimento automático |
+| `app_settings` | Saldo inicial e integrantes, compartilhados entre aparelhos |
 
 ### Recursos especiais
 
@@ -167,7 +189,10 @@ A partir daí, novos usuários são criados e gerenciados diretamente pelo app (
 | **Dízimo** | `is_tithe = true` + `amount = 0` no banco — o app calcula 10% da renda dinamicamente |
 | **Parcelas** | `installment_start_month/year` definem o início; o app calcula qual parcela exibir e oculta fora do período |
 | **Owner** | Campo texto livre — use `"joao"`, `"maria"`, `"casal"` ou qualquer identificador |
-| **RLS** | Habilitado em todas as tabelas com `allow_all` via anon key (adequado para app pessoal/privado) |
+| **Encerramento e início** | `stop_month/year` encerram contas e receitas sem mudar os meses anteriores; `start_month/year` definem o primeiro mês |
+| **Compra parcelada** | `purchase_id` liga as parcelas da mesma compra |
+| **RLS** | Habilitado em todas as tabelas, com acesso apenas para usuários logados |
+| **Admin** | O papel fica em `app_metadata`, que o usuário não consegue alterar |
 
 ---
 
@@ -182,6 +207,7 @@ A partir daí, novos usuários são criados e gerenciados diretamente pelo app (
 │   ├── faturas/                    # Faturas por cartão
 │   ├── analise/                    # Análise por categoria
 │   ├── gastos-cartoes/             # Comparativo entre cartões
+│   ├── produtos/                   # Produtos salvos do preenchimento automático
 │   ├── configuracoes/              # Configurações + Gerenciamento de usuários
 │   ├── login/                      # Tela de login
 │   └── api/admin/users/            # API routes para operações de admin
@@ -191,15 +217,17 @@ A partir daí, novos usuários são criados e gerenciados diretamente pelo app (
 │   │   └── LayoutShell.tsx         # Layout responsivo com menu hamburger mobile
 │   └── ui/                         # Modal, Toggle, MonthSelector, ChartTooltip…
 ├── lib/
-│   ├── supabase.ts                 # Cliente Supabase para queries
-│   ├── supabase-browser.ts         # Cliente browser para auth
+│   ├── supabase.ts                 # Cliente Supabase do navegador
 │   ├── supabase-admin.ts           # Cliente server-side com service role
 │   ├── queries.ts                  # Todas as queries do banco
+│   ├── balance.ts                  # Cálculo do saldo mensal e acumulado
+│   ├── settings.ts                 # Configurações compartilhadas entre aparelhos
 │   └── utils.ts                    # Helpers: formatCurrency, computeInstallment, sumTransactions…
 ├── middleware.ts                    # Protege rotas, redireciona para /login
 ├── types/index.ts                   # Tipos TypeScript globais
 └── supabase/
-    ├── schema.sql                   # Schema completo com RLS
+    ├── schema.sql                   # Tabelas principais
+    ├── migration_*.sql              # Alterações, na ordem indicada acima
     └── seed.sql                     # Dados genéricos de exemplo
 ```
 

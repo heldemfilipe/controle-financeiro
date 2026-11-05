@@ -4,7 +4,7 @@ import { Save, AlertCircle } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { BillStartFields } from "@/components/contas/BillStartFields";
 import { getCurrentMonth } from "@/lib/utils";
-import type { FixedBill } from "@/types";
+import type { Category, FixedBill } from "@/types";
 
 interface BillModalProps {
   open: boolean;
@@ -14,9 +14,10 @@ interface BillModalProps {
   onSave: () => void;
   saving: boolean;
   error: string;
+  categories: Category[];
 }
 
-export function BillModal({ open, onClose, value, onChange, onSave, saving, error }: BillModalProps) {
+export function BillModal({ open, onClose, value, onChange, onSave, saving, error, categories }: BillModalProps) {
   const { month, year } = getCurrentMonth();
 
   return (
@@ -52,9 +53,11 @@ export function BillModal({ open, onClose, value, onChange, onSave, saving, erro
           <div>
             <label className="label">Categoria</label>
             <select className="input" value={value.category ?? "essencial"}
-              onChange={e => onChange({ category: e.target.value as any })}>
-              <option value="essencial">Essencial</option>
-              <option value="outros">Outros</option>
+              onChange={e => onChange({ category: e.target.value })}>
+              {categories.length === 0
+                ? <><option value="essencial">Essencial</option><option value="outros">Outros</option></>
+                : categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)
+              }
             </select>
           </div>
           <div>

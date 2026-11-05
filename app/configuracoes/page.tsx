@@ -4,17 +4,17 @@ import { useEffect, useState } from "react";
 import { TrendingUp, CreditCard, FileText, UserPlus, Users, Check } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import {
-  getIncomeSources, upsertIncomeSource, deleteIncomeSource, endIncomeSource,
+  getCategories, getIncomeSources, upsertIncomeSource, deleteIncomeSource, endIncomeSource,
   getCreditCards, upsertCreditCard,
   getFixedBills, upsertFixedBill, deleteFixedBill, setFixedBillStop,
   getIncomeSourceAmounts, upsertIncomeSourceAmount, deleteIncomeSourceAmount,
 } from "@/lib/queries";
 import { formatCurrency, getCurrentMonth, isSourceActiveInMonth, isTitheBill } from "@/lib/utils";
 import { TITHE_RATE } from "@/lib/gastos-mensais/tithe";
-import { createSupabaseBrowser } from "@/lib/supabase-browser";
+import { supabase } from "@/lib/supabase";
 import { getOwners, slugify, DEFAULT_OWNERS, type Owner } from "@/lib/owners";
 import { loadOwners, persistOwners } from "@/lib/settings";
-import type { IncomeSource, IncomeSourceAmount, CreditCard as CreditCardType, FixedBill, AppUser } from "@/types";
+import type { Category, IncomeSource, IncomeSourceAmount, CreditCard as CreditCardType, FixedBill, AppUser } from "@/types";
 
 import { RendaTab } from "@/components/configuracoes/tabs/RendaTab";
 import { CartoesTab } from "@/components/configuracoes/tabs/CartoesTab";
@@ -62,6 +62,7 @@ export default function ConfiguracoesPage() {
 
   // ── Integrantes ─────────────────────────────────────────────────────────────
   const [owners, setOwners] = useState<Owner[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [newOwner, setNewOwner] = useState({ name: "", color: "#6366f1" });
   const [editingOwner, setEditingOwner] = useState<Owner | null>(null);
   const [ownerError, setOwnerError] = useState("");
@@ -91,7 +92,6 @@ export default function ConfiguracoesPage() {
   }, []);
 
   async function checkAdmin() {
-    const supabase = createSupabaseBrowser();
     const { data } = await supabase.auth.getUser();
     if (data.user?.app_metadata?.role === "admin") {
       setIsAdmin(true);
@@ -99,10 +99,10 @@ export default function ConfiguracoesPage() {
   }
 
   async function loadAll() {
-    const [srcs, cs, bls] = await Promise.all([
-      getIncomeSources(), getCreditCards(), getFixedBills(),
+    const [srcs, cs, bls, cats] = await Promise.all([
+      getIncomeSources(), getCreditCards(), getFixedBills(), getCategories(),
     ]);
-    setSources(srcs); setCards(cs); setBills(bls);
+    setSources(srcs); setCards(cs); setBills(bls); setCategories(cats);
   }
 
   function showSaved() {
@@ -559,6 +559,7 @@ export default function ConfiguracoesPage() {
         onSave={saveBill}
         saving={loading}
         error={saveError}
+        categories={categories}
       />
 
       <NewUserModal

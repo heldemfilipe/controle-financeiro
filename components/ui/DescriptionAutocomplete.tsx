@@ -25,6 +25,7 @@ interface Props {
 }
 
 const MAX_SHOWN = 8;
+const MIN_DROPDOWN_W = 380;
 
 export function DescriptionAutocomplete({
   value,
@@ -69,9 +70,12 @@ export function DescriptionAutocomplete({
     const r = inputRef.current.getBoundingClientRect();
     // Se não há espaço abaixo, mostrar acima
     const spaceBelow = window.innerHeight - r.bottom;
-    const dropH = Math.min(filtered.length, MAX_SHOWN) * 44 + 32;
+    const dropH = Math.min(filtered.length, MAX_SHOWN) * 54 + 32;
     const top = spaceBelow < dropH && r.top > dropH ? r.top - dropH - 4 : r.bottom + 4;
-    setPos({ top, left: r.left, width: r.width });
+    // Dropdown mais largo que o input (para caber o nome), limitado à viewport
+    const width = Math.min(Math.max(r.width, MIN_DROPDOWN_W), window.innerWidth - 16);
+    const left = Math.max(8, Math.min(r.left, window.innerWidth - width - 8));
+    setPos({ top, left, width });
   }, [filtered.length]);
 
   // Reposicionar ao rolar (captura em todos os elementos, inclusive o modal)
@@ -158,44 +162,45 @@ export function DescriptionAutocomplete({
                     type="button"
                     onMouseDown={e => { e.preventDefault(); select(s); }}
                     onMouseEnter={() => setCursor(i)}
-                    className={`w-full flex items-center gap-2 px-3 py-2 text-left transition-colors border-t border-slate-50 dark:border-slate-700/30 first:border-0 ${
+                    title={s.description}
+                    className={`w-full flex flex-col gap-1 px-3 py-2 text-left transition-colors border-t border-slate-50 dark:border-slate-700/30 first:border-0 ${
                       i === cursor
                         ? "bg-primary-50 dark:bg-primary-900/30"
                         : "hover:bg-slate-50 dark:hover:bg-slate-700/40"
                     }`}
                   >
-                    {/* Descrição */}
-                    <span className="flex-1 text-sm text-slate-700 dark:text-slate-200 truncate min-w-0">
+                    {/* Linha 1: descrição completa (até 2 linhas) */}
+                    <span className="text-sm font-medium text-slate-700 dark:text-slate-200 leading-snug line-clamp-2 break-words">
                       {s.description}
                     </span>
 
-                    {/* Badge de categoria */}
-                    {s.category && (
-                      <span
-                        className="text-[11px] font-medium px-1.5 py-0.5 rounded-full shrink-0 capitalize"
-                        style={
-                          catObj?.color
-                            ? { backgroundColor: `${catObj.color}22`, color: catObj.color }
-                            : { backgroundColor: "rgb(239 246 255)", color: "rgb(29 78 216)" }
-                        }
-                      >
-                        {s.category}
-                      </span>
-                    )}
+                    {/* Linha 2: categoria, valor típico e contagem */}
+                    <span className="flex items-center gap-2 min-w-0">
+                      {s.category && (
+                        <span
+                          className="text-[11px] font-medium px-1.5 py-0.5 rounded-full truncate max-w-[55%] capitalize"
+                          style={
+                            catObj?.color
+                              ? { backgroundColor: `${catObj.color}22`, color: catObj.color }
+                              : { backgroundColor: "rgb(239 246 255)", color: "rgb(29 78 216)" }
+                          }
+                        >
+                          {s.category}
+                        </span>
+                      )}
 
-                    {/* Valor típico */}
-                    {s.amount > 0 && (
-                      <span className="text-xs text-slate-400 dark:text-slate-500 shrink-0 tabular-nums">
-                        {formatCurrency(s.amount)}
-                      </span>
-                    )}
+                      {s.amount > 0 && (
+                        <span className="text-xs text-slate-400 dark:text-slate-500 shrink-0 tabular-nums">
+                          {formatCurrency(s.amount)}
+                        </span>
+                      )}
 
-                    {/* Contagem de uso */}
-                    {s.count > 1 && (
-                      <span className="text-[10px] text-slate-300 dark:text-slate-600 shrink-0">
-                        {s.count}×
-                      </span>
-                    )}
+                      {s.count > 1 && (
+                        <span className="ml-auto text-[10px] text-slate-400 dark:text-slate-500 shrink-0">
+                          usado {s.count}×
+                        </span>
+                      )}
+                    </span>
                   </button>
                 );
               })}

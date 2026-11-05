@@ -27,6 +27,11 @@ interface Props {
 const MAX_SHOWN = 8;
 const MIN_DROPDOWN_W = 380;
 
+/** Minúsculas e sem acentos/cedilha/til, para buscar "acai" e achar "Açaí" */
+function normalize(s: string) {
+  return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+}
+
 export function DescriptionAutocomplete({
   value,
   onChange,
@@ -49,18 +54,18 @@ export function DescriptionAutocomplete({
 
   // ── Filtro de sugestões ──────────────────────────────────────────────────────
   const filtered = (() => {
-    const q = value.trim().toLowerCase();
+    const q = normalize(value);
     if (!q) return suggestions.slice(0, MAX_SHOWN);
-    const starts   = suggestions.filter(s => s.description.toLowerCase().startsWith(q));
+    const starts   = suggestions.filter(s => normalize(s.description).startsWith(q));
     const contains = suggestions.filter(
-      s => !s.description.toLowerCase().startsWith(q) && s.description.toLowerCase().includes(q),
+      s => !normalize(s.description).startsWith(q) && normalize(s.description).includes(q),
     );
     return [...starts, ...contains].slice(0, MAX_SHOWN);
   })();
 
   const isNew =
     value.trim().length > 1 &&
-    !suggestions.some(s => s.description.toLowerCase() === value.trim().toLowerCase());
+    !suggestions.some(s => normalize(s.description) === normalize(value));
 
   const showDropdown = open && (filtered.length > 0 || isNew);
 

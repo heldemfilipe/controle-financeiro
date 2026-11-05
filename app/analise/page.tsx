@@ -14,6 +14,7 @@ import { computePrevBalance, clearBalanceCache } from "@/lib/balance";
 import type { MonthlyBillPayment, MonthlyBalanceOverride, CardTransaction, BillAdvance } from "@/types";
 import { formatCurrency, getCurrentMonth, getMonthName, filterRegularBills, isBillActiveInMonth, resolveSourceAmount, isTitheBill } from "@/lib/utils";
 import { buildCategoryMap, sumCategories } from "@/lib/analise";
+import { useLatestLoad } from "@/lib/useLatestLoad";
 import { TITHE_RATE } from "@/lib/gastos-mensais/tithe";
 import type { Category, FixedBill, CreditCard as CreditCardType, IncomeSourceAmount } from "@/types";
 
@@ -99,9 +100,12 @@ export default function AnalisePage() {
   const [prevBalance,    setPrevBalance]    = useState(0);
   const [expandedCard,   setExpandedCard]   = useState<string | null>(null);
 
-  useEffect(() => { loadData(); }, [month, year]);
+  const startLoad = useLatestLoad();
+
+  useEffect(() => { loadData(); }, [month, year]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadData() {
+    const isLatest = startLoad();
     setLoading(true);
     clearBalanceCache();
     const pm = month === 1 ? 12 : month - 1;
@@ -128,6 +132,7 @@ export default function AnalisePage() {
         getMonthlyIncomes(pm, py),
         getBalanceOverride(month, year),
       ]);
+      if (!isLatest()) return;
       setSourceAmounts(srcAmts);
       setAdvancesMade(madeNow);
       setBalanceOverride(override);
@@ -190,9 +195,9 @@ export default function AnalisePage() {
       }));
 
       const prev = await computePrevBalance(month, year);
-      setPrevBalance(prev);
+      if (isLatest()) setPrevBalance(prev);
     } finally {
-      setLoading(false);
+      if (isLatest()) setLoading(false);
     }
   }
 

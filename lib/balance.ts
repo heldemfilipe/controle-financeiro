@@ -1,7 +1,6 @@
 import {
-  getMonthlyIncomes, getMonthlyBillPayments, getCardTransactions,
+  getMonthlyIncomesByYear, getMonthlyBillPaymentsByYear, getCardTransactionsByYear,
   getFixedBills, getIncomeSources, getBalanceOverrides,
-  getBillAdvancesMadeIn, getBillAdvancesForMonth,
   getBillAdvancesMadeInYear, getBillAdvancesForYear,
   getIncomeSourceAmounts,
 } from "./queries";
@@ -9,7 +8,10 @@ import { isBillActiveInMonth, resolveSourceAmount, isSourceActiveInMonth, isTith
 import { loadAccConfig } from "./settings";
 import type { AccumuladoConfig } from "./utils";
 import { TITHE_RATE } from "./gastos-mensais/tithe";
-import type { FixedBill, IncomeSource, IncomeSourceAmount, MonthlyBalanceOverride, BillAdvance } from "@/types";
+import type {
+  BillAdvance, CardTransaction, FixedBill, IncomeSource, IncomeSourceAmount,
+  MonthlyBalanceOverride, MonthlyBillPayment, MonthlyIncome,
+} from "@/types";
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 
@@ -32,51 +34,81 @@ export interface MonthAccumulated extends MonthBalanceData {
   overrideNotes: string | null;
 }
 
-// ─── Cache simples em memória (por sessão de página) ─────────────────────────
+// ─── Dados por ano ───────────────────────────────────────────────────────────
+// Cada ano é buscado de uma vez, em vez de vários acessos por mês. O cache guarda a
+// promessa, então cargas simultâneas do mesmo ano reaproveitam a mesma busca.
 
-const cache = new Map<string, MonthBalanceData>();
-
-function cacheKey(month: number, year: number): string {
-  return `${year}-${month}`;
+interface SharedData {
+  allBills: FixedBill[];
+  allSources: IncomeSource[];
+  allSourceAmounts: IncomeSourceAmount[];
 }
 
+interface MonthRecords {
+  incomes: MonthlyIncome[];
+  billPayments: MonthlyBillPayment[];
+  txs: CardTransaction[];
+  advancesMade: BillAdvance[];
+  advancesFor: BillAdvance[];
+}
+
+let sharedCache: Promise<SharedData> | null = null;
+const yearCache = new Map<number, Promise<MonthBalanceData[]>>();
+
 export function clearBalanceCache() {
-  cache.clear();
+  sharedCache = null;
+  yearCache.clear();
+}
+
+function loadSharedData(): Promise<SharedData> {
+  sharedCache ??= Promise.all([getFixedBills(), getIncomeSources(), getIncomeSourceAmounts()])
+    .then(([allBills, allSources, allSourceAmounts]) => ({ allBills, allSources, allSourceAmounts }));
+  sharedCache.catch(() => { sharedCache = null; });
+  return sharedCache;
+}
+
+function loadYearMonths(year: number): Promise<MonthBalanceData[]> {
+  const cached = yearCache.get(year);
+  if (cached) return cached;
+
+  const months = Promise.all([
+    loadSharedData(),
+    getMonthlyIncomesByYear(year),
+    getMonthlyBillPaymentsByYear(year),
+    getCardTransactionsByYear(year),
+    getBillAdvancesMadeInYear(year),
+    getBillAdvancesForYear(year),
+  ]).then(([shared, incomes, billPayments, txs, advancesMade, advancesFor]) =>
+    Array.from({ length: 12 }, (_, i) => {
+      const month = i + 1;
+      return calcMonthBalance(month, year, shared, {
+        incomes: incomes.filter(r => r.month === month),
+        billPayments: billPayments.filter(r => r.month === month),
+        txs: txs.filter(r => r.month === month),
+        advancesMade: advancesMade.filter(a => a.paid_month === month),
+        advancesFor: advancesFor.filter(a => a.target_month === month),
+      });
+    }),
+  );
+
+  yearCache.set(year, months);
+  months.catch(() => yearCache.delete(year));
+  return months;
 }
 
 // ─── Cálculo de um mês ──────────────────────────────────────────────────────
 
-export async function computeMonthBalance(
+export async function computeMonthBalance(month: number, year: number): Promise<MonthBalanceData> {
+  return (await loadYearMonths(year))[month - 1];
+}
+
+function calcMonthBalance(
   month: number,
   year: number,
-  /** Passa dados pré-carregados para evitar queries repetidas */
-  preloaded?: {
-    allBills?: FixedBill[];
-    allSources?: IncomeSource[];
-    allSourceAmounts?: IncomeSourceAmount[];
-    /** Adiantamentos feitos NESTE mês (já filtrados por mês) */
-    advancesMade?: BillAdvance[];
-    /** Adiantamentos PARA este mês (já filtrados por mês) */
-    advancesFor?: BillAdvance[];
-  },
-): Promise<MonthBalanceData> {
-  const key = cacheKey(month, year);
-  const cached = cache.get(key);
-  if (cached) return cached;
-
-  const [incomes, billPayments, txs, allBills, allSources, allSourceAmounts, rawAdvancesMade, rawAdvancesFor] = await Promise.all([
-    getMonthlyIncomes(month, year),
-    getMonthlyBillPayments(month, year),
-    getCardTransactions(month, year),
-    preloaded?.allBills ? Promise.resolve(preloaded.allBills) : getFixedBills(),
-    preloaded?.allSources ? Promise.resolve(preloaded.allSources) : getIncomeSources(),
-    preloaded?.allSourceAmounts ? Promise.resolve(preloaded.allSourceAmounts) : getIncomeSourceAmounts(),
-    preloaded?.advancesMade ? Promise.resolve(preloaded.advancesMade) : getBillAdvancesMadeIn(month, year),
-    preloaded?.advancesFor ? Promise.resolve(preloaded.advancesFor) : getBillAdvancesForMonth(month, year),
-  ]);
-
-  const advancesMade = rawAdvancesMade;
-  const advancedBillIds = new Set(rawAdvancesFor.map(a => a.bill_id));
+  { allBills, allSources, allSourceAmounts }: SharedData,
+  { incomes, billPayments, txs, advancesMade, advancesFor }: MonthRecords,
+): MonthBalanceData {
+  const advancedBillIds = new Set(advancesFor.map(a => a.bill_id));
 
   // Receita
   const sourcesForMonth = allSources.filter(s => isSourceActiveInMonth(s, month, year));
@@ -132,15 +164,12 @@ export async function computeMonthBalance(
   });
   const totalCards = txs.reduce((s, t) => s - t.amount, 0);
 
-  const result: MonthBalanceData = {
+  return {
     month, year,
     totalIncome, totalBills, totalCards,
     balance: totalIncome - totalBills - totalCards,
     billsByCategory, cardTotals,
   };
-
-  cache.set(key, result);
-  return result;
 }
 
 // ─── Saldo acumulado de um ano inteiro ───────────────────────────────────────
@@ -151,51 +180,30 @@ export async function computeYearBalances(
 ): Promise<MonthAccumulated[]> {
   const cfg = accConfig ?? await loadAccConfig();
 
-  const [allBills, allSources, allSourceAmounts, overrides, yearAdvancesMade, yearAdvancesFor] = await Promise.all([
-    getFixedBills(),
-    getIncomeSources(),
-    getIncomeSourceAmounts(),
+  const previousYears = Array.from(
+    { length: Math.max(0, year - cfg.startYear) },
+    (_, i) => cfg.startYear + i,
+  );
+
+  const [overrides, monthsData, previous] = await Promise.all([
     getBalanceOverrides(year),
-    getBillAdvancesMadeInYear(year),
-    getBillAdvancesForYear(year),
+    loadYearMonths(year),
+    Promise.all(previousYears.map(y => Promise.all([loadYearMonths(y), getBalanceOverrides(y)]))),
   ]);
 
   const overrideMap = new Map<number, MonthlyBalanceOverride>();
   overrides.forEach(o => overrideMap.set(o.month, o));
 
-  // Calcula saldo inicial do ano (carry-over de anos anteriores)
+  // Saldo inicial do ano: acumula do mês de início até dezembro do ano anterior
   let yearStartBalance = cfg.saldoInicial;
-  if (year > cfg.startYear) {
-    // Acumula todos os meses do startYear.startMonth até dez do ano anterior
-    for (let y = cfg.startYear; y < year; y++) {
-      const startM = y === cfg.startYear ? cfg.startMonth : 1;
-      const prevOverrides = y !== year ? await getBalanceOverrides(y) : [];
-      const prevOverrideMap = new Map<number, MonthlyBalanceOverride>();
-      prevOverrides.forEach(o => prevOverrideMap.set(o.month, o));
-
-      for (let m = startM; m <= 12; m++) {
-        const md = await computeMonthBalance(m, y, { allBills, allSources, allSourceAmounts });
-        yearStartBalance += md.balance;
-
-        const ov = prevOverrideMap.get(m);
-        if (ov) {
-          yearStartBalance = ov.auto_zero ? 0 : ov.override_amount;
-        }
-      }
-    }
-  }
-
-  // Calcula cada mês do ano
-  const monthsData = await Promise.all(
-    Array.from({ length: 12 }, (_, i) => {
-      const m = i + 1;
-      return computeMonthBalance(m, year, {
-        allBills, allSources, allSourceAmounts,
-        advancesMade: yearAdvancesMade.filter(a => a.paid_month === m),
-        advancesFor: yearAdvancesFor.filter(a => a.target_month === m),
-      });
-    })
-  );
+  previous.forEach(([months, yearOverrides], index) => {
+    const startMonth = index === 0 ? cfg.startMonth : 1;
+    months.slice(startMonth - 1).forEach(md => {
+      yearStartBalance += md.balance;
+      const ov = yearOverrides.find(o => o.month === md.month);
+      if (ov) yearStartBalance = ov.auto_zero ? 0 : ov.override_amount;
+    });
+  });
 
   let running = yearStartBalance;
   return monthsData.map((md, i) => {
@@ -237,14 +245,7 @@ export async function computePrevBalance(
     return cfg.saldoInicial;
   }
 
-  const yearData = await computeYearBalances(year, cfg);
-
-  // O saldo anterior é o acumulado do mês anterior
-  if (month === 1) {
-    // Precisa do acumulado de dezembro do ano anterior
-    const prevYear = await computeYearBalances(year - 1, cfg);
-    return prevYear[11]?.saldoAcumulado ?? cfg.saldoInicial;
-  }
-
-  return yearData[month - 2]?.saldoAcumulado ?? cfg.saldoInicial;
+  // O saldo anterior é o acumulado do mês anterior; em janeiro, dezembro do ano anterior
+  const yearData = await computeYearBalances(month === 1 ? year - 1 : year, cfg);
+  return yearData[month === 1 ? 11 : month - 2]?.saldoAcumulado ?? cfg.saldoInicial;
 }

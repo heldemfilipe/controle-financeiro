@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { data } = vi.hoisted(() => ({
+const { data, calls } = vi.hoisted(() => ({
+  calls: { transactions: 0, bills: 0 },
   data: {
     incomes: [] as any[],
     payments: [] as any[],
@@ -13,20 +14,20 @@ const { data } = vi.hoisted(() => ({
   },
 }));
 
-const inMonth = (m: number, y: number) => (r: any) => r.month === m && r.year === y;
-
 vi.mock("./queries", () => ({
-  getMonthlyIncomes: async (m: number, y: number) => data.incomes.filter(inMonth(m, y)),
-  getMonthlyBillPayments: async (m: number, y: number) => data.payments.filter(inMonth(m, y)),
-  getCardTransactions: async (m: number, y: number) => data.txs.filter(inMonth(m, y)),
-  getFixedBills: async () => data.bills,
+  getMonthlyIncomesByYear: async (y: number) => data.incomes.filter(r => r.year === y),
+  getMonthlyBillPaymentsByYear: async (y: number) => data.payments.filter(r => r.year === y),
+  getCardTransactionsByYear: async (y: number) => {
+    calls.transactions++;
+    return data.txs.filter(r => r.year === y);
+  },
+  getFixedBills: async () => {
+    calls.bills++;
+    return data.bills;
+  },
   getIncomeSources: async () => data.sources,
   getIncomeSourceAmounts: async () => data.amounts,
   getBalanceOverrides: async (y: number) => data.overrides.filter(o => o.year === y),
-  getBillAdvancesMadeIn: async (m: number, y: number) =>
-    data.advances.filter(a => a.paid_month === m && a.paid_year === y),
-  getBillAdvancesForMonth: async (m: number, y: number) =>
-    data.advances.filter(a => a.target_month === m && a.target_year === y),
   getBillAdvancesMadeInYear: async (y: number) => data.advances.filter(a => a.paid_year === y),
   getBillAdvancesForYear: async (y: number) => data.advances.filter(a => a.target_year === y),
 }));
@@ -60,6 +61,8 @@ const config = { saldoInicial: 100, startMonth: 1, startYear: 2026 };
 beforeEach(() => {
   clearBalanceCache();
   Object.values(data).forEach(list => { list.length = 0; });
+  calls.transactions = 0;
+  calls.bills = 0;
 });
 
 describe("computeMonthBalance", () => {
@@ -119,6 +122,7 @@ describe("computeMonthBalance", () => {
 
     expect((await computeMonthBalance(1, 2026)).totalBills).toBe(100);
 
+    clearBalanceCache();
     data.payments.push({ bill_id: "d1", amount: 150, month: 2, year: 2026 });
     expect((await computeMonthBalance(2, 2026)).totalBills).toBe(150);
   });
@@ -197,6 +201,36 @@ describe("computeYearBalances", () => {
     expect(after.slice(0, 10).map(m => m.saldoAcumulado))
       .toEqual(before.slice(0, 10).map(m => m.saldoAcumulado));
     expect(after[10].totalBills).toBe(100);
+  });
+});
+
+describe("consultas", () => {
+  it("busca cada ano uma única vez, mesmo com vários anos acumulados", async () => {
+    data.sources.push(source());
+    await computeYearBalances(2026, { ...config, startYear: 2023 });
+
+    expect(calls.transactions).toBe(4);
+    expect(calls.bills).toBe(1);
+  });
+
+  it("reaproveita os dados até o cache ser limpo", async () => {
+    await computeMonthBalance(1, 2026);
+    await computeMonthBalance(2, 2026);
+    expect(calls.transactions).toBe(1);
+
+    clearBalanceCache();
+    await computeMonthBalance(1, 2026);
+    expect(calls.transactions).toBe(2);
+  });
+
+  it("cargas simultâneas do mesmo ano dividem a mesma busca", async () => {
+    await Promise.all([computeMonthBalance(1, 2026), computeMonthBalance(2, 2026)]);
+    expect(calls.transactions).toBe(1);
+  });
+
+  it("janeiro não busca o ano atual sem precisar", async () => {
+    await computePrevBalance(1, 2027, config);
+    expect(calls.transactions).toBe(1);
   });
 });
 

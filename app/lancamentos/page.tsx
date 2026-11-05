@@ -22,6 +22,7 @@ import { getCurrentMonth, resolveSourceAmount, isTitheBill } from "@/lib/utils";
 import { calcTithe } from "@/lib/gastos-mensais/tithe";
 import { getOwners, type Owner } from "@/lib/owners";
 import { loadOwners } from "@/lib/settings";
+import { useLatestLoad } from "@/lib/useLatestLoad";
 import type {
   IncomeSource, IncomeSourceAmount, FixedBill, CreditCard as CreditCardType,
   CardTransaction, MonthlyIncome, Category, BillPeriod, MonthlyBillPayment,
@@ -79,7 +80,9 @@ export default function LancamentosPage() {
 
   const { toast } = useToast();
 
-  useEffect(() => { loadAll(); }, [month, year]);
+  const startLoad = useLatestLoad();
+
+  useEffect(() => { loadAll(); }, [month, year]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     setOwners(getOwners());
@@ -88,6 +91,7 @@ export default function LancamentosPage() {
   }, []);
 
   async function loadAll() {
+    const isLatest = startLoad();
     const [srcs, bills, cats, cards, txs, incomes, srcAmts, payments] = await Promise.all([
       getIncomeSources(month, year),
       getFixedBills(),
@@ -98,6 +102,7 @@ export default function LancamentosPage() {
       getIncomeSourceAmounts(),
       getMonthlyBillPayments(month, year),
     ]);
+    if (!isLatest()) return;
     setBillPayments(payments);
     setIncomeSources(srcs);
     setFixedBills(bills);

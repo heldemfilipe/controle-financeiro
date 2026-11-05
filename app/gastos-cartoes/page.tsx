@@ -13,8 +13,9 @@ import {
 import { PageHeader } from "@/components/ui/PageHeader";
 import { MonthSelector } from "@/components/ui/MonthSelector";
 import { ChartTooltip } from "@/components/ui/ChartTooltip";
-import { getCreditCards, getCardTransactions } from "@/lib/queries";
+import { getCreditCards, getCardTransactions, getCardTransactionsByYear } from "@/lib/queries";
 import { formatCurrency, getCurrentMonth, getMonthName, sumTransactions } from "@/lib/utils";
+import { useLatestLoad } from "@/lib/useLatestLoad";
 import { MONTH_SHORT } from "@/types";
 import type { CreditCard as CreditCardType, CardTransaction } from "@/types";
 
@@ -28,9 +29,10 @@ export default function GastosCataoesPage() {
   const [txs, setTxs] = useState<CardTransaction[]>([]);
   const [yearlyByCard, setYearlyByCard] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const startLoad = useLatestLoad();
 
   useEffect(() => { loadCards(); }, []);
-  useEffect(() => { if (cards.length > 0) loadData(); }, [month, year, cards, viewMode]);
+  useEffect(() => { if (cards.length > 0) loadData(); }, [month, year, cards, viewMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadCards() {
     const cs = await getCreditCards();
@@ -38,20 +40,19 @@ export default function GastosCataoesPage() {
   }
 
   async function loadData() {
+    const isLatest = startLoad();
     setLoading(true);
     try {
       if (viewMode === "mensal") {
         const data = await getCardTransactions(month, year);
-        setTxs(data);
+        if (isLatest()) setTxs(data);
       } else {
-        const allTxs = await Promise.all(
-          Array.from({ length: 12 }, (_, i) => getCardTransactions(i + 1, year))
-        );
-        const flat = allTxs.flat();
-        setTxs(flat);
+        const yearTxs = await getCardTransactionsByYear(year);
+        if (!isLatest()) return;
+        setTxs(yearTxs);
 
         const byMonth = Array.from({ length: 12 }, (_, i) => {
-          const monthTxs = allTxs[i];
+          const monthTxs = yearTxs.filter(t => t.month === i + 1);
           const row: any = { name: MONTH_SHORT[i] };
           cards.forEach(card => {
             row[card.name] = sumTransactions(monthTxs.filter(t => t.card_id === card.id));
@@ -61,7 +62,7 @@ export default function GastosCataoesPage() {
         setYearlyByCard(byMonth);
       }
     } finally {
-      setLoading(false);
+      if (isLatest()) setLoading(false);
     }
   }
 

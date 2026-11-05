@@ -14,6 +14,7 @@ import {
 } from "@/lib/queries";
 import { getCurrentMonth, isOverdue, isBillActiveInMonth, getAccConfig, resolveSourceAmount, isTitheBill } from "@/lib/utils";
 import { loadAccConfig, persistAccConfig } from "@/lib/settings";
+import { useLatestLoad } from "@/lib/useLatestLoad";
 import type { AccumuladoConfig } from "@/lib/utils";
 import { computePrevBalance, clearBalanceCache } from "@/lib/balance";
 import { calcTithe } from "@/lib/gastos-mensais/tithe";
@@ -91,7 +92,9 @@ export default function GastosMensaisPage() {
   // ── Modal de edição de valor ───────────────────────────────────────────────
   const [editModal, setEditModal] = useState<EditBillAmountTarget | null>(null);
 
-  useEffect(() => { loadAll(); }, [month, year, accConfig]);
+  const startLoad = useLatestLoad();
+
+  useEffect(() => { loadAll(); }, [month, year, accConfig]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     // Só troca o estado se mudou, para não recarregar a tela à toa
@@ -101,6 +104,7 @@ export default function GastosMensaisPage() {
   }, []);
 
   async function loadAll() {
+    const isLatest = startLoad();
     setLoading(true);
     try {
       clearBalanceCache();
@@ -121,6 +125,7 @@ export default function GastosMensaisPage() {
         getIncomeSourceAmounts(),
         getCategories(),
       ]);
+      if (!isLatest()) return;
       setSourceAmounts(srcAmts);
       setCategories(cats);
       setBalanceOverride(override);
@@ -145,9 +150,9 @@ export default function GastosMensaisPage() {
 
       // ── Saldo acumulado anterior — módulo centralizado (respeita overrides + carry-over + dízimo) ──
       const prev = await computePrevBalance(month, year, accConfig);
-      setPrevBalance(prev);
+      if (isLatest()) setPrevBalance(prev);
     } finally {
-      setLoading(false);
+      if (isLatest()) setLoading(false);
     }
   }
 

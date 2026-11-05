@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { getFixedBills, getBalanceOverrides } from "@/lib/queries";
 import { formatCurrency, getMonthName, getAccConfig } from "@/lib/utils";
+import { useLatestLoad } from "@/lib/useLatestLoad";
 import { computeYearBalances, clearBalanceCache } from "@/lib/balance";
 import { loadAccConfig } from "@/lib/settings";
 import { MONTH_SHORT } from "@/types";
@@ -55,23 +56,27 @@ export default function SimuladorPage() {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ name: scenarioName, mods })); } catch {}
   }, [scenarioName, mods]);
 
-  useEffect(() => { loadYear(); }, [year]);
+  const startLoad = useLatestLoad();
+
+  useEffect(() => { loadYear(); }, [year]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadYear() {
+    const isLatest = startLoad();
     setLoading(true);
     try {
-      const [allBills, yearOverrides] = await Promise.all([
+      clearBalanceCache();
+      const [allBills, yearOverrides, cfg] = await Promise.all([
         getFixedBills(),
         getBalanceOverrides(year),
+        loadAccConfig(),
       ]);
-      setBills(allBills);
-      setOverrides(yearOverrides);
-      const cfg = await loadAccConfig();
-      setAccCfg(cfg);
 
       // Usa módulo centralizado (respeita overrides, carry-over, dízimo dinâmico)
-      clearBalanceCache();
       const yearData = await computeYearBalances(year, cfg);
+      if (!isLatest()) return;
+      setBills(allBills);
+      setOverrides(yearOverrides);
+      setAccCfg(cfg);
 
       // Calcula startBalance (carry-over) para applyMods recalcular o cenário
       // Encontra o primeiro mês com acumulação válida e deduz o saldo dele
@@ -91,7 +96,9 @@ export default function SimuladorPage() {
         saldo: md.balance,
         saldoAcumulado: md.saldoAcumulado ?? 0,
       })));
-    } finally { setLoading(false); }
+    } finally {
+      if (isLatest()) setLoading(false);
+    }
   }
 
   // Derived — memoizados para evitar recalcular em cada render

@@ -12,11 +12,12 @@ import { Toggle } from "@/components/ui/Toggle";
 import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
 import {
-  getCreditCards, getCardTransactionsByCard, getCardTransactions,
+  getCreditCards, getCardTransactionsByYear,
   getMonthlyCardPayments, toggleCardPaid,
   upsertCardTransaction, deleteCardTransaction,
 } from "@/lib/queries";
 import { formatCurrency, getCurrentMonth, isOverdue, sumTransactions } from "@/lib/utils";
+import { useLatestLoad } from "@/lib/useLatestLoad";
 import { MONTH_SHORT } from "@/types";
 import type { CreditCard as CreditCardType, CardTransaction, MonthlyCardPayment } from "@/types";
 
@@ -38,9 +39,10 @@ export default function FaturasPage() {
   const [editingTxId, setEditingTxId] = useState<string | null>(null);
 
   const { toast } = useToast();
+  const startLoad = useLatestLoad();
 
   useEffect(() => { loadCards(); }, []);
-  useEffect(() => { if (cards.length > 0) loadMonthData(); }, [month, year, cards, selectedCard]);
+  useEffect(() => { if (cards.length > 0) loadMonthData(); }, [month, year, cards, selectedCard]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadCards() {
     const cs = await getCreditCards();
@@ -49,28 +51,26 @@ export default function FaturasPage() {
   }
 
   async function loadMonthData() {
-    const [payments, allTxs] = await Promise.all([
+    const isLatest = startLoad();
+    const [payments, yearTxs] = await Promise.all([
       getMonthlyCardPayments(month, year),
-      getCardTransactions(month, year),
+      getCardTransactionsByYear(year),
     ]);
+    if (!isLatest()) return;
+
+    const monthTxs = yearTxs
+      .filter(t => t.month === month)
+      .sort((a, b) => (b.transaction_date ?? "9999").localeCompare(a.transaction_date ?? "9999"));
     setCardPayments(payments);
-    setAllTxsThisMonth(allTxs);
+    setAllTxsThisMonth(monthTxs);
 
     if (selectedCard) {
-      const cardTxs = await getCardTransactionsByCard(selectedCard.id, month, year);
-      setTxs(cardTxs);
-
-      const yd = await Promise.all(
-        Array.from({ length: 12 }, async (_, i) => {
-          const m = i + 1;
-          const mt = await getCardTransactionsByCard(selectedCard.id, m, year);
-          return {
-            name: MONTH_SHORT[i],
-            total: sumTransactions(mt),
-          };
-        })
-      );
-      setYearlyData(yd);
+      setTxs(monthTxs.filter(t => t.card_id === selectedCard.id));
+      const cardYearTxs = yearTxs.filter(t => t.card_id === selectedCard.id);
+      setYearlyData(Array.from({ length: 12 }, (_, i) => ({
+        name: MONTH_SHORT[i],
+        total: sumTransactions(cardYearTxs.filter(t => t.month === i + 1)),
+      })));
     }
   }
 

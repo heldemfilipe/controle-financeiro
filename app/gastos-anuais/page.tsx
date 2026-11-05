@@ -13,6 +13,7 @@ import {
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ChartTooltip } from "@/components/ui/ChartTooltip";
 import { formatCurrency, getMonthName } from "@/lib/utils";
+import { useLatestLoad } from "@/lib/useLatestLoad";
 import { computeYearBalances, clearBalanceCache } from "@/lib/balance";
 import { MONTH_SHORT } from "@/types";
 
@@ -35,13 +36,17 @@ export default function GastosAnuaisPage() {
   const [data, setData] = useState<MonthData[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => { loadYear(); }, [year]);
+  const startLoad = useLatestLoad();
+
+  useEffect(() => { loadYear(); }, [year]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadYear() {
+    const isLatest = startLoad();
     setLoading(true);
     try {
       clearBalanceCache();
       const yearData = await computeYearBalances(year);
+      if (!isLatest()) return;
 
       const EMPRESTIMO_CATS = new Set(["emprestimo", "financiamento", "empréstimo", "financiamentos"]);
       const isEmprestimo = (k: string) => EMPRESTIMO_CATS.has((k ?? "").toLowerCase());
@@ -71,7 +76,7 @@ export default function GastosAnuaisPage() {
 
       setData(months);
     } finally {
-      setLoading(false);
+      if (isLatest()) setLoading(false);
     }
   }
 

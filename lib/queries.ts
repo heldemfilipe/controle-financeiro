@@ -7,6 +7,21 @@ import type {
   ProductSuggestion, SavedProduct,
 } from "@/types";
 
+const PAGE_SIZE = 1000;
+
+/** Busca todas as linhas em páginas: o Supabase limita cada resposta a 1000 */
+async function fetchAllPages<T>(
+  fetchPage: (from: number, to: number) => PromiseLike<{ data: unknown[] | null; error: unknown }>,
+): Promise<T[]> {
+  const rows: T[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await fetchPage(from, from + PAGE_SIZE - 1);
+    if (error) throw error;
+    rows.push(...((data ?? []) as T[]));
+    if (!data || data.length < PAGE_SIZE) return rows;
+  }
+}
+
 // ─── Padronização de texto ao salvar ──────────────────────────────────────────
 
 function withCapitalizedName<T extends { name?: string }>(item: T): T {
@@ -232,18 +247,6 @@ export async function getCardTransactions(month: number, year: number) {
   return data as CardTransaction[];
 }
 
-export async function getCardTransactionsByCard(cardId: string, month: number, year: number) {
-  const { data, error } = await supabase
-    .from("card_transactions")
-    .select("*")
-    .eq("card_id", cardId)
-    .eq("month", month)
-    .eq("year", year)
-    .order("transaction_date", { ascending: false });
-  if (error) throw error;
-  return data as CardTransaction[];
-}
-
 export async function upsertCardTransaction(tx: Partial<CardTransaction>) {
   const { data, error } = await supabase
     .from("card_transactions")
@@ -290,7 +293,6 @@ export async function updateFollowingInstallments(
 
 // ─── Produtos salvos (autocomplete) ───────────────────────────────────────────
 
-const PAGE_SIZE = 1000;
 const MISSING_PRODUCTS_TABLE =
   "Tabela saved_products não encontrada. Rode supabase/migration_saved_products.sql no Supabase.";
 
@@ -303,20 +305,14 @@ function throwProductError(error: { code?: string }): never {
 }
 
 /** Todas as despesas de cartão, da mais recente para a mais antiga */
-async function getExpenseRows(): Promise<ProductTxRow[]> {
-  const rows: ProductTxRow[] = [];
-  for (let from = 0; ; from += PAGE_SIZE) {
-    const { data, error } = await supabase
-      .from("card_transactions")
-      .select("description, category, amount")
-      .lt("amount", 0)           // apenas despesas (excluir créditos/estornos)
-      .order("created_at", { ascending: false })
-      .order("id")
-      .range(from, from + PAGE_SIZE - 1);
-    if (error) throw error;
-    rows.push(...((data ?? []) as ProductTxRow[]));
-    if (!data || data.length < PAGE_SIZE) return rows;
-  }
+function getExpenseRows(): Promise<ProductTxRow[]> {
+  return fetchAllPages<ProductTxRow>((from, to) => supabase
+    .from("card_transactions")
+    .select("description, category, amount")
+    .lt("amount", 0)           // apenas despesas (excluir créditos/estornos)
+    .order("created_at", { ascending: false })
+    .order("id")
+    .range(from, to));
 }
 
 async function getSavedProducts(): Promise<SavedProduct[]> {
@@ -672,12 +668,32 @@ export async function getBillAdvancesForYear(year: number): Promise<BillAdvance[
 }
 
 /** Todas as transações de cartão de um ano (query única para análise anual) */
-export async function getCardTransactionsByYear(year: number): Promise<CardTransaction[]> {
-  const { data, error } = await supabase
+export function getCardTransactionsByYear(year: number): Promise<CardTransaction[]> {
+  return fetchAllPages<CardTransaction>((from, to) => supabase
     .from("card_transactions")
     .select("*")
     .eq("year", year)
-    .order("month", { ascending: true });
-  if (error) throw error;
-  return (data ?? []) as CardTransaction[];
+    .order("month", { ascending: true })
+    .order("id")
+    .range(from, to));
+}
+
+/** Receitas lançadas em cada mês do ano (query única para o saldo anual) */
+export function getMonthlyIncomesByYear(year: number): Promise<MonthlyIncome[]> {
+  return fetchAllPages<MonthlyIncome>((from, to) => supabase
+    .from("monthly_incomes")
+    .select("*")
+    .eq("year", year)
+    .order("id")
+    .range(from, to));
+}
+
+/** Pagamentos de contas em cada mês do ano (query única para o saldo anual) */
+export function getMonthlyBillPaymentsByYear(year: number): Promise<MonthlyBillPayment[]> {
+  return fetchAllPages<MonthlyBillPayment>((from, to) => supabase
+    .from("monthly_bill_payments")
+    .select("*")
+    .eq("year", year)
+    .order("id")
+    .range(from, to));
 }

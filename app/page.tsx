@@ -18,6 +18,7 @@ import {
 } from "@/lib/queries";
 import { computeYearBalances, clearBalanceCache } from "@/lib/balance";
 import { formatCurrency, getMonthName, getCurrentMonth } from "@/lib/utils";
+import { useLatestLoad } from "@/lib/useLatestLoad";
 import { MONTH_SHORT } from "@/types";
 import type { Category } from "@/types";
 
@@ -46,11 +47,14 @@ export default function DashboardPage() {
   const [cardsPaid, setCardsPaid] = useState<any[]>([]);
   const [accBalance, setAccBalance] = useState<number | null>(null);
 
+  const startLoad = useLatestLoad();
+
   useEffect(() => {
     loadData();
-  }, [month, year]);
+  }, [month, year]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadData() {
+    const isLatest = startLoad();
     setLoading(true);
     try {
       // Fonte única de verdade: computeYearBalances calcula os 12 meses do ano
@@ -63,6 +67,7 @@ export default function DashboardPage() {
         getMonthlyCardPayments(month, year),
         computeYearBalances(year),
       ]);
+      if (!isLatest()) return;
 
       const cur = accYear[month - 1];
 
@@ -124,7 +129,7 @@ export default function DashboardPage() {
     } catch (e) {
       console.error(e);
     } finally {
-      setLoading(false);
+      if (isLatest()) setLoading(false);
     }
   }
 

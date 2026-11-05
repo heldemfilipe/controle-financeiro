@@ -17,6 +17,7 @@ import {
   formatCurrency, getCurrentMonth, getMonthName,
   filterRegularBills, computeInstallment, isBillActiveInMonth, resolveSourceAmount,
 } from "@/lib/utils";
+import { useLatestLoad } from "@/lib/useLatestLoad";
 import type {
   FixedBill, MonthlyBillPayment,
   CardTransaction, CreditCard as CreditCardType, Category,
@@ -274,9 +275,12 @@ export default function DicasPage() {
   const [activeInstallments, setActiveInstallments] = useState(0);
   const [overdueCount, setOverdueCount] = useState(0);
 
-  useEffect(() => { loadData(); }, [month, year]);
+  const startLoad = useLatestLoad();
+
+  useEffect(() => { loadData(); }, [month, year]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadData() {
+    const isLatest = startLoad();
     setLoading(true);
     try {
       const [sources, incomes, bills, payments, txs, cards, cats, advances, srcAmts] = await Promise.all([
@@ -290,6 +294,7 @@ export default function DicasPage() {
         getBillAdvancesForMonth(month, year),
         getIncomeSourceAmounts(),
       ]);
+      if (!isLatest()) return;
       const advancedBillIds = new Set(advances.map(a => a.bill_id));
 
       const inc = sources.reduce((s, src) => {
@@ -349,7 +354,7 @@ export default function DicasPage() {
       setScore(calcScore(inc, totalExp, overdue, installmentCount));
       setTips(generatedTips);
     } finally {
-      setLoading(false);
+      if (isLatest()) setLoading(false);
     }
   }
 

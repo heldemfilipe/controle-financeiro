@@ -12,7 +12,8 @@ import {
 import { formatCurrency, getCurrentMonth, isSourceActiveInMonth, isTitheBill } from "@/lib/utils";
 import { TITHE_RATE } from "@/lib/gastos-mensais/tithe";
 import { createSupabaseBrowser } from "@/lib/supabase-browser";
-import { getOwners, saveOwners, slugify, DEFAULT_OWNERS, type Owner } from "@/lib/owners";
+import { getOwners, slugify, DEFAULT_OWNERS, type Owner } from "@/lib/owners";
+import { loadOwners, persistOwners } from "@/lib/settings";
 import type { IncomeSource, IncomeSourceAmount, CreditCard as CreditCardType, FixedBill, AppUser } from "@/types";
 
 import { RendaTab } from "@/components/configuracoes/tabs/RendaTab";
@@ -86,6 +87,7 @@ export default function ConfiguracoesPage() {
     loadAll();
     checkAdmin();
     setOwners(getOwners());
+    loadOwners().then(setOwners).catch(console.error);
   }, []);
 
   async function checkAdmin() {
@@ -315,6 +317,14 @@ export default function ConfiguracoesPage() {
   }
 
   // ── Integrantes handlers ─────────────────────────────────────────────────────
+  function storeOwners(updated: Owner[]) {
+    setOwners(updated);
+    persistOwners(updated).catch(err => {
+      console.error("Erro ao salvar integrantes:", err);
+      setOwnerError("Não foi possível salvar. Tente novamente.");
+    });
+  }
+
   function addOwner() {
     const name = newOwner.name.trim();
     if (!name) { setOwnerError("Nome obrigatório"); return; }
@@ -323,8 +333,7 @@ export default function ConfiguracoesPage() {
     const current = owners;
     if (current.find(o => o.id === id)) { setOwnerError("Já existe um integrante com esse nome"); return; }
     const updated = [...current, { id, name, color: newOwner.color }];
-    saveOwners(updated);
-    setOwners(updated);
+    storeOwners(updated);
     setNewOwner({ name: "", color: "#6366f1" });
     setOwnerError("");
     showSaved();
@@ -333,8 +342,7 @@ export default function ConfiguracoesPage() {
   function updateOwner() {
     if (!editingOwner) return;
     const updated = owners.map(o => o.id === editingOwner.id ? editingOwner : o);
-    saveOwners(updated);
-    setOwners(updated);
+    storeOwners(updated);
     setEditingOwner(null);
     showSaved();
   }
@@ -343,14 +351,12 @@ export default function ConfiguracoesPage() {
     if (id === "casal") return; // protect Família
     const updated = owners.filter(o => o.id !== id);
     if (updated.length === 0) return;
-    saveOwners(updated);
-    setOwners(updated);
+    storeOwners(updated);
     showSaved();
   }
 
   function resetOwners() {
-    saveOwners(DEFAULT_OWNERS);
-    setOwners(DEFAULT_OWNERS);
+    storeOwners(DEFAULT_OWNERS);
     showSaved();
   }
 

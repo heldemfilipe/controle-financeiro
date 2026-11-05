@@ -21,6 +21,7 @@ import { type TxSuggestion } from "@/components/ui/DescriptionAutocomplete";
 import { getCurrentMonth, resolveSourceAmount, isTitheBill } from "@/lib/utils";
 import { calcTithe } from "@/lib/gastos-mensais/tithe";
 import { getOwners, type Owner } from "@/lib/owners";
+import { loadOwners } from "@/lib/settings";
 import type {
   IncomeSource, IncomeSourceAmount, FixedBill, CreditCard as CreditCardType,
   CardTransaction, MonthlyIncome, Category, BillPeriod, MonthlyBillPayment,
@@ -82,6 +83,7 @@ export default function LancamentosPage() {
 
   useEffect(() => {
     setOwners(getOwners());
+    loadOwners().then(setOwners).catch(console.error);
     getTransactionSuggestions().then(setTxSuggestions).catch(console.error);
   }, []);
 

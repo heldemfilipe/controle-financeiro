@@ -15,8 +15,9 @@ export const DEFAULT_OWNERS: Owner[] = [
   { id: "casal",   name: "Família", color: "#10b981" },
 ];
 
-export function getOwners(): Owner[] {
-  if (typeof window === "undefined") return DEFAULT_OWNERS;
+/** Integrantes guardados neste navegador, ou null se não houver nenhum */
+export function readStoredOwners(): Owner[] | null {
+  if (typeof window === "undefined") return null;
   try {
     const raw = localStorage.getItem(OWNERS_KEY);
     if (raw) {
@@ -24,7 +25,12 @@ export function getOwners(): Owner[] {
       if (Array.isArray(parsed) && parsed.length > 0) return parsed;
     }
   } catch {}
-  return DEFAULT_OWNERS;
+  return null;
+}
+
+/** Cópia local, para a primeira pintura; o valor oficial vem de loadOwners */
+export function getOwners(): Owner[] {
+  return readStoredOwners() ?? DEFAULT_OWNERS;
 }
 
 export function saveOwners(owners: Owner[]): void {

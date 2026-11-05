@@ -12,7 +12,8 @@ import {
   getBalanceOverride, upsertBalanceOverride, deleteBalanceOverride,
   getBillAdvancesMadeIn, getBillAdvancesForMonth, createBillAdvance, deleteBillAdvance,
 } from "@/lib/queries";
-import { getCurrentMonth, isOverdue, isBillActiveInMonth, getAccConfig, saveAccConfig, resolveSourceAmount, isTitheBill } from "@/lib/utils";
+import { getCurrentMonth, isOverdue, isBillActiveInMonth, getAccConfig, resolveSourceAmount, isTitheBill } from "@/lib/utils";
+import { loadAccConfig, persistAccConfig } from "@/lib/settings";
 import type { AccumuladoConfig } from "@/lib/utils";
 import { computePrevBalance, clearBalanceCache } from "@/lib/balance";
 import { calcTithe } from "@/lib/gastos-mensais/tithe";
@@ -67,7 +68,7 @@ export default function GastosMensaisPage() {
   const [expandedCard,     setExpandedCard]     = useState<string | null>(null);
   const [prevBalance,      setPrevBalance]      = useState(0);
 
-  // ── Config do saldo acumulado (localStorage) ───────────────────────────────
+  // ── Config do saldo acumulado (banco, com cópia no navegador) ──────────────
   const [accConfig,     setAccConfig]     = useState<AccumuladoConfig>(() => getAccConfig());
   const [accModal,      setAccModal]      = useState(false);
   const [editAccConfig, setEditAccConfig] = useState<AccumuladoConfig>(() => getAccConfig());
@@ -91,6 +92,13 @@ export default function GastosMensaisPage() {
   const [editModal, setEditModal] = useState<EditBillAmountTarget | null>(null);
 
   useEffect(() => { loadAll(); }, [month, year, accConfig]);
+
+  useEffect(() => {
+    // Só troca o estado se mudou, para não recarregar a tela à toa
+    loadAccConfig()
+      .then(cfg => setAccConfig(cur => JSON.stringify(cur) === JSON.stringify(cfg) ? cur : cfg))
+      .catch(console.error);
+  }, []);
 
   async function loadAll() {
     setLoading(true);
@@ -225,10 +233,15 @@ export default function GastosMensaisPage() {
 
   // ── Handlers ───────────────────────────────────────────────────────────────
 
-  function saveAccConfigModal() {
-    saveAccConfig(editAccConfig);
-    setAccConfig(editAccConfig);
-    setAccModal(false);
+  async function saveAccConfigModal() {
+    try {
+      await persistAccConfig(editAccConfig);
+      setAccConfig(editAccConfig);
+      setAccModal(false);
+    } catch (err) {
+      console.error("Erro ao salvar configuração do saldo:", err);
+      toast("Erro ao salvar a configuração", "error");
+    }
   }
 
   function openOverrideModal() {

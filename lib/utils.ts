@@ -272,22 +272,23 @@ export interface AccumuladoConfig {
 
 const ACC_KEY = "renda_acc_config";
 
-export function getAccConfig(): AccumuladoConfig {
-  if (typeof window === "undefined") {
-    return { saldoInicial: 0, startMonth: 1, startYear: new Date().getFullYear() };
-  }
+function defaultAccConfig(): AccumuladoConfig {
+  return { saldoInicial: 0, startMonth: 1, startYear: new Date().getFullYear() };
+}
+
+/** Configuração guardada neste navegador, ou null se não houver nenhuma */
+export function readStoredAccConfig(): AccumuladoConfig | null {
+  if (typeof window === "undefined") return null;
   try {
     const raw = localStorage.getItem(ACC_KEY);
-    if (raw) {
-      return {
-        saldoInicial: 0,
-        startMonth: 1,
-        startYear: new Date().getFullYear(),
-        ...JSON.parse(raw),
-      };
-    }
+    if (raw) return { ...defaultAccConfig(), ...JSON.parse(raw) };
   } catch {}
-  return { saldoInicial: 0, startMonth: 1, startYear: new Date().getFullYear() };
+  return null;
+}
+
+/** Cópia local, para a primeira pintura; o valor oficial vem de loadAccConfig */
+export function getAccConfig(): AccumuladoConfig {
+  return readStoredAccConfig() ?? defaultAccConfig();
 }
 
 export function saveAccConfig(config: AccumuladoConfig): void {

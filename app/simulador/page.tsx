@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { getFixedBills, getBalanceOverrides } from "@/lib/queries";
 import { formatCurrency, getMonthName, getAccConfig } from "@/lib/utils";
 import { computeYearBalances, clearBalanceCache } from "@/lib/balance";
+import { loadAccConfig } from "@/lib/settings";
 import { MONTH_SHORT } from "@/types";
 import type { FixedBill, MonthlyBalanceOverride } from "@/types";
 import {
@@ -65,7 +66,7 @@ export default function SimuladorPage() {
       ]);
       setBills(allBills);
       setOverrides(yearOverrides);
-      const cfg = getAccConfig();
+      const cfg = await loadAccConfig();
       setAccCfg(cfg);
 
       // Usa módulo centralizado (respeita overrides, carry-over, dízimo dinâmico)

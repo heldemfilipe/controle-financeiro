@@ -5,7 +5,8 @@ import {
   getBillAdvancesMadeInYear, getBillAdvancesForYear,
   getIncomeSourceAmounts,
 } from "./queries";
-import { getAccConfig, isBillActiveInMonth, resolveSourceAmount, isSourceActiveInMonth, isTitheBill } from "./utils";
+import { isBillActiveInMonth, resolveSourceAmount, isSourceActiveInMonth, isTitheBill } from "./utils";
+import { loadAccConfig } from "./settings";
 import type { AccumuladoConfig } from "./utils";
 import { TITHE_RATE } from "./gastos-mensais/tithe";
 import type { FixedBill, IncomeSource, IncomeSourceAmount, MonthlyBalanceOverride, BillAdvance } from "@/types";
@@ -148,7 +149,7 @@ export async function computeYearBalances(
   year: number,
   accConfig?: AccumuladoConfig,
 ): Promise<MonthAccumulated[]> {
-  const cfg = accConfig ?? getAccConfig();
+  const cfg = accConfig ?? await loadAccConfig();
 
   const [allBills, allSources, allSourceAmounts, overrides, yearAdvancesMade, yearAdvancesFor] = await Promise.all([
     getFixedBills(),
@@ -229,7 +230,7 @@ export async function computePrevBalance(
   year: number,
   accConfig?: AccumuladoConfig,
 ): Promise<number> {
-  const cfg = accConfig ?? getAccConfig();
+  const cfg = accConfig ?? await loadAccConfig();
 
   // Se o mês é anterior ou igual ao início da acumulação, retorna saldo inicial
   if (year < cfg.startYear || (year === cfg.startYear && month <= cfg.startMonth)) {

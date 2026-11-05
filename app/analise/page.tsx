@@ -11,7 +11,7 @@ import {
 } from "@/lib/queries";
 import { computePrevBalance, clearBalanceCache } from "@/lib/balance";
 import type { MonthlyBillPayment, CardTransaction, BillAdvance } from "@/types";
-import { formatCurrency, getCurrentMonth, getMonthName, filterRegularBills, getAccConfig, isBillActiveInMonth, resolveSourceAmount, isTitheBill } from "@/lib/utils";
+import { formatCurrency, getCurrentMonth, getMonthName, filterRegularBills, isBillActiveInMonth, resolveSourceAmount, isTitheBill } from "@/lib/utils";
 import { TITHE_RATE } from "@/lib/gastos-mensais/tithe";
 import type { Category, FixedBill, CreditCard as CreditCardType, IncomeSourceAmount } from "@/types";
 

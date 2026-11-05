@@ -47,6 +47,29 @@ export async function deleteCategory(id: string) {
   if (error) throw error;
 }
 
+// ─── Configurações compartilhadas ─────────────────────────────────────────────
+
+export async function getAppSetting<T>(key: string): Promise<T | null> {
+  const { data, error } = await supabase
+    .from("app_settings")
+    .select("value")
+    .eq("key", key)
+    .maybeSingle();
+  if (error) {
+    // Migration pendente: segue com a cópia do navegador
+    if (isMissingTableError(error)) return null;
+    throw error;
+  }
+  return (data?.value ?? null) as T | null;
+}
+
+export async function saveAppSetting(key: string, value: unknown): Promise<void> {
+  const { error } = await supabase
+    .from("app_settings")
+    .upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: "key" });
+  if (error) throw error;
+}
+
 // ─── Income Sources ───────────────────────────────────────────────────────────
 
 /** Retorna fontes de renda ativas para o mês.

@@ -1,31 +1,13 @@
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
+import { getAdminUser, isValidRole } from "@/lib/admin-auth";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-
-async function getRequestingUser() {
-  const cookieStore = await cookies();
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() { return cookieStore.getAll(); },
-        setAll() {},
-      },
-    }
-  );
-  const { data: { user } } = await supabase.auth.getUser();
-  return user;
-}
 
 // PATCH /api/admin/users/[id] — edita ou ativa/desativa usuário
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const requester = await getRequestingUser();
-  if (!requester || requester.user_metadata?.role !== "admin") {
+  if (!(await getAdminUser())) {
     return NextResponse.json({ error: "Não autorizado" }, { status: 403 });
   }
 
@@ -33,19 +15,27 @@ export async function PATCH(
   const body = await request.json();
   const { display_name, role, banned, password } = body;
 
+  if (role !== undefined && !isValidRole(role)) {
+    return NextResponse.json({ error: "Papel inválido" }, { status: 400 });
+  }
+
   const updatePayload: Record<string, unknown> = {};
 
   if (password !== undefined) {
     updatePayload.password = password;
   }
 
-  if (display_name !== undefined || role !== undefined) {
-    const currentUser = await supabaseAdmin.auth.admin.getUserById(id);
-    updatePayload.user_metadata = {
-      ...currentUser.data.user?.user_metadata,
-      ...(display_name !== undefined && { display_name }),
-      ...(role !== undefined && { role }),
-    };
+  if (role !== undefined || display_name !== undefined) {
+    const { data, error } = await supabaseAdmin.auth.admin.getUserById(id);
+    if (error || !data.user) {
+      return NextResponse.json({ error: "Usuário não encontrado" }, { status: 404 });
+    }
+    if (display_name !== undefined) {
+      updatePayload.user_metadata = { ...data.user.user_metadata, display_name };
+    }
+    if (role !== undefined) {
+      updatePayload.app_metadata = { ...data.user.app_metadata, role };
+    }
   }
 
   if (banned !== undefined) {
@@ -63,8 +53,7 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const requester = await getRequestingUser();
-  if (!requester || requester.user_metadata?.role !== "admin") {
+  if (!(await getAdminUser())) {
     return NextResponse.json({ error: "Não autorizado" }, { status: 403 });
   }
 

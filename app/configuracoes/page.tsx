@@ -93,7 +93,7 @@ export default function ConfiguracoesPage() {
   async function checkAdmin() {
     const supabase = createSupabaseBrowser();
     const { data } = await supabase.auth.getUser();
-    if (data.user?.user_metadata?.role === "admin") {
+    if (data.user?.app_metadata?.role === "admin") {
       setIsAdmin(true);
     }
   }

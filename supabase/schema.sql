@@ -116,8 +116,8 @@ CREATE INDEX IF NOT EXISTS idx_monthly_card_payments_month  ON monthly_card_paym
 CREATE INDEX IF NOT EXISTS idx_monthly_incomes_month        ON monthly_incomes(month, year);
 
 -- ─── ROW LEVEL SECURITY ───────────────────────────────────────────────────────
--- App pessoal sem autenticação: RLS habilitado com acesso total via anon key.
--- Para multi-usuário, substitua as policies por `auth.uid() = user_id`.
+-- Dados compartilhados entre os usuários logados; sem sessão não há acesso.
+-- Para separar os dados por usuário, troque as policies por `auth.uid() = user_id`.
 ALTER TABLE income_sources        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE fixed_bills           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE credit_cards          ENABLE ROW LEVEL SECURITY;
@@ -126,10 +126,10 @@ ALTER TABLE monthly_bill_payments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE monthly_card_payments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE monthly_incomes       ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "allow_all" ON income_sources        FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "allow_all" ON fixed_bills           FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "allow_all" ON credit_cards          FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "allow_all" ON card_transactions     FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "allow_all" ON monthly_bill_payments FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "allow_all" ON monthly_card_payments FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "allow_all" ON monthly_incomes       FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "authenticated_all" ON income_sources        FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "authenticated_all" ON fixed_bills           FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "authenticated_all" ON credit_cards          FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "authenticated_all" ON card_transactions     FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "authenticated_all" ON monthly_bill_payments FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "authenticated_all" ON monthly_card_payments FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "authenticated_all" ON monthly_incomes       FOR ALL TO authenticated USING (true) WITH CHECK (true);

@@ -1,9 +1,21 @@
 import { supabase } from "./supabase";
-import { isSourceActiveInMonth } from "./utils";
+import { capitalizeWords, isSourceActiveInMonth, normalizeText } from "./utils";
+import { buildProducts, type ProductTxRow } from "./products";
 import type {
   IncomeSource, IncomeSourceAmount, FixedBill, CreditCard, CardTransaction, Category,
   MonthlyBillPayment, MonthlyCardPayment, MonthlyIncome, MonthlyBalanceOverride, BillAdvance,
+  ProductSuggestion, SavedProduct,
 } from "@/types";
+
+// ─── Padronização de texto ao salvar ──────────────────────────────────────────
+
+function withCapitalizedName<T extends { name?: string }>(item: T): T {
+  return item.name ? { ...item, name: capitalizeWords(item.name) } : item;
+}
+
+function withCapitalizedDescription<T extends { description?: string }>(item: T): T {
+  return item.description ? { ...item, description: capitalizeWords(item.description) } : item;
+}
 
 // ─── Categories ───────────────────────────────────────────────────────────────
 
@@ -58,7 +70,7 @@ export async function getIncomeSources(month?: number, year?: number) {
 export async function upsertIncomeSource(source: Partial<IncomeSource>) {
   const { data, error } = await supabase
     .from("income_sources")
-    .upsert(source)
+    .upsert(withCapitalizedName(source))
     .select()
     .single();
   if (error) throw error;
@@ -123,7 +135,7 @@ export async function getFixedBills() {
 export async function upsertFixedBill(bill: Partial<FixedBill>) {
   const { data, error } = await supabase
     .from("fixed_bills")
-    .upsert(bill)
+    .upsert(withCapitalizedName(bill))
     .select()
     .single();
   if (error) throw error;
@@ -153,7 +165,7 @@ export async function getCreditCards() {
 export async function upsertCreditCard(card: Partial<CreditCard>) {
   const { data, error } = await supabase
     .from("credit_cards")
-    .upsert(card)
+    .upsert(withCapitalizedName(card))
     .select()
     .single();
   if (error) throw error;
@@ -188,7 +200,7 @@ export async function getCardTransactionsByCard(cardId: string, month: number, y
 export async function upsertCardTransaction(tx: Partial<CardTransaction>) {
   const { data, error } = await supabase
     .from("card_transactions")
-    .upsert(tx)
+    .upsert(withCapitalizedDescription(tx))
     .select()
     .single();
   if (error) throw error;
@@ -203,105 +215,185 @@ export async function deleteCardTransaction(id: string) {
   if (error) throw error;
 }
 
+type InstallmentRef = Pick<
+  CardTransaction,
+  "card_id" | "description" | "installment_total" | "installment_current"
+>;
+
+/** IDs desta parcela e das seguintes, ignorando maiúsculas e acentos na descrição */
+async function getFollowingInstallmentIds(tx: InstallmentRef): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("card_transactions")
+    .select("id, description")
+    .eq("card_id", tx.card_id)
+    .eq("installment_total", tx.installment_total)
+    .gte("installment_current", tx.installment_current);
+  if (error) throw error;
+  const key = normalizeText(tx.description);
+  return (data ?? []).filter(t => normalizeText(t.description) === key).map(t => t.id);
+}
+
 /** Remove esta parcela e todas as seguintes da mesma compra */
-export async function deleteCardTransactionsFollowing(
-  tx: Pick<CardTransaction, "card_id" | "description" | "installment_total" | "installment_current">
-) {
+export async function deleteCardTransactionsFollowing(tx: InstallmentRef) {
+  const ids = await getFollowingInstallmentIds(tx);
+  if (!ids.length) return;
   const { error } = await supabase
     .from("card_transactions")
     .delete()
-    .eq("card_id", tx.card_id)
-    .eq("description", tx.description)
-    .eq("installment_total", tx.installment_total)
-    .gte("installment_current", tx.installment_current);
+    .in("id", ids);
   if (error) throw error;
 }
 
 /** Propaga categoria para esta parcela e todas as seguintes */
-export async function updateCategoryForFollowing(
-  tx: Pick<CardTransaction, "card_id" | "description" | "installment_total" | "installment_current">,
-  category: string | null
-) {
+export async function updateCategoryForFollowing(tx: InstallmentRef, category: string | null) {
+  const ids = await getFollowingInstallmentIds(tx);
+  if (!ids.length) return;
   const { error } = await supabase
     .from("card_transactions")
     .update({ category })
-    .eq("card_id", tx.card_id)
-    .eq("description", tx.description)
-    .eq("installment_total", tx.installment_total)
-    .gte("installment_current", tx.installment_current);
+    .in("id", ids);
   if (error) throw error;
 }
 
 /** Propaga o valor para esta parcela e todas as seguintes da mesma compra */
-export async function updateAmountForFollowing(
-  tx: Pick<CardTransaction, "card_id" | "description" | "installment_total" | "installment_current">,
-  amount: number
-) {
+export async function updateAmountForFollowing(tx: InstallmentRef, amount: number) {
+  const ids = await getFollowingInstallmentIds(tx);
+  if (!ids.length) return;
   const { error } = await supabase
     .from("card_transactions")
     .update({ amount })
-    .eq("card_id", tx.card_id)
-    .eq("description", tx.description)
-    .eq("installment_total", tx.installment_total)
-    .gte("installment_current", tx.installment_current);
+    .in("id", ids);
   if (error) throw error;
 }
 
-/** Retorna sugestões de descrição baseadas no histórico de transações.
- *  Agrupa por description, calcula categoria mais usada e valor típico (mediana). */
-export async function getTransactionSuggestions(): Promise<
-  { description: string; category: string | null; amount: number; count: number }[]
-> {
-  const { data, error } = await supabase
-    .from("card_transactions")
-    .select("description, category, amount")
-    .lt("amount", 0)           // apenas despesas (excluir créditos/estornos)
-    .order("id", { ascending: false })
-    .limit(800);
-  if (error) throw error;
+// ─── Produtos salvos (autocomplete) ───────────────────────────────────────────
 
-  type Entry = {
-    description: string;
-    cats: Map<string, number>;
-    amounts: number[];
-    count: number;
-  };
-  const map = new Map<string, Entry>();
+const PAGE_SIZE = 1000;
+const MISSING_PRODUCTS_TABLE =
+  "Tabela saved_products não encontrada. Rode supabase/migration_saved_products.sql no Supabase.";
 
-  for (const tx of data ?? []) {
-    const key = tx.description.trim().toLowerCase();
-    if (!map.has(key)) {
-      map.set(key, { description: tx.description.trim(), cats: new Map(), amounts: [], count: 0 });
+function isMissingTableError(error: { code?: string }) {
+  return error.code === "42P01" || error.code === "PGRST205";
+}
+
+function throwProductError(error: { code?: string }): never {
+  throw isMissingTableError(error) ? new Error(MISSING_PRODUCTS_TABLE) : error;
+}
+
+/** Todas as despesas de cartão, da mais recente para a mais antiga */
+async function getExpenseRows(): Promise<ProductTxRow[]> {
+  const rows: ProductTxRow[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from("card_transactions")
+      .select("description, category, amount")
+      .lt("amount", 0)           // apenas despesas (excluir créditos/estornos)
+      .order("created_at", { ascending: false })
+      .order("id")
+      .range(from, from + PAGE_SIZE - 1);
+    if (error) throw error;
+    rows.push(...((data ?? []) as ProductTxRow[]));
+    if (!data || data.length < PAGE_SIZE) return rows;
+  }
+}
+
+async function getSavedProducts(): Promise<SavedProduct[]> {
+  const { data, error } = await supabase.from("saved_products").select("*");
+  if (error) {
+    // Sem a migration o autocomplete segue funcionando só com o histórico
+    if (isMissingTableError(error)) return [];
+    throw error;
+  }
+  return (data ?? []) as SavedProduct[];
+}
+
+/** Todos os produtos do histórico, inclusive os ocultos */
+export async function getProducts(): Promise<ProductSuggestion[]> {
+  const [rows, saved] = await Promise.all([getExpenseRows(), getSavedProducts()]);
+  return buildProducts(rows, saved);
+}
+
+/** Produtos sugeridos ao lançar (sem os ocultos) */
+export async function getTransactionSuggestions(): Promise<ProductSuggestion[]> {
+  return (await getProducts()).filter(p => !p.hidden);
+}
+
+export interface ProductInput {
+  name: string;
+  category: string | null;
+  amount: number | null;
+}
+
+/**
+ * Cria ou altera um produto. Renomear atualiza os lançamentos já feitos, para que
+ * o histórico continue agrupado; o valor vale apenas para os próximos lançamentos.
+ * A categoria só muda nos lançamentos existentes com `applyCategoryToHistory`.
+ */
+export async function saveProduct(
+  original: ProductSuggestion | null,
+  input: ProductInput,
+  { applyCategoryToHistory = false } = {},
+): Promise<ProductSuggestion> {
+  const name = capitalizeWords(input.name);
+  const key = normalizeText(name);
+  const keyChanged = !!original && original.key !== key;
+
+  // Guarda só o que mudou: o resto continua acompanhando o histórico
+  const payload: Partial<SavedProduct> = { key, name, hidden: false };
+  if (!original || keyChanged || input.category !== original.category) payload.category = input.category;
+  if (!original || keyChanged || input.amount !== original.amount) payload.amount = input.amount;
+
+  const { error: saveError } = await supabase
+    .from("saved_products")
+    .upsert(payload, { onConflict: "key" });
+  if (saveError) throwProductError(saveError);
+
+  if (original) {
+    const staleNames = original.variants.filter(v => v !== name);
+    if (staleNames.length) {
+      const { error } = await supabase
+        .from("card_transactions")
+        .update({ description: name })
+        .in("description", staleNames);
+      if (error) throw error;
     }
-    const e = map.get(key)!;
-    e.count++;
-    e.amounts.push(Math.abs(tx.amount));
-    if (tx.category) e.cats.set(tx.category, (e.cats.get(tx.category) ?? 0) + 1);
+    if (applyCategoryToHistory) {
+      const { error } = await supabase
+        .from("card_transactions")
+        .update({ category: input.category })
+        .eq("description", name);
+      if (error) throw error;
+    }
+    if (keyChanged) {
+      const { error } = await supabase.from("saved_products").delete().eq("key", original.key);
+      if (error) throw error;
+    }
   }
 
-  return Array.from(map.values())
-    .map(e => {
-      // categoria mais frequente
-      let bestCat: string | null = null, bestN = 0;
-      e.cats.forEach((n, cat) => { if (n > bestN) { bestN = n; bestCat = cat; } });
-      // valor típico = mediana
-      const sorted = [...e.amounts].sort((a, b) => a - b);
-      const typical = sorted[Math.floor(sorted.length / 2)] ?? 0;
-      return {
-        description: e.description,
-        category: bestCat,
-        amount: parseFloat(typical.toFixed(2)),
-        count: e.count,
-      };
-    })
-    .sort((a, b) => b.count - a.count);
+  return {
+    key,
+    description: name,
+    category: input.category,
+    amount: input.amount ?? 0,
+    count: original?.count ?? 0,
+    hidden: false,
+    variants: [name],
+  };
+}
+
+/** Oculta ou mostra um produto nas sugestões; os lançamentos não mudam */
+export async function setProductHidden(product: ProductSuggestion, hidden: boolean) {
+  const { error } = await supabase
+    .from("saved_products")
+    .upsert({ key: product.key, name: product.description, hidden }, { onConflict: "key" });
+  if (error) throwProductError(error);
 }
 
 /** Insere múltiplas parcelas de uma vez (compra parcelada) */
 export async function insertCardTransactions(txs: Partial<CardTransaction>[]) {
   const { data, error } = await supabase
     .from("card_transactions")
-    .insert(txs)
+    .insert(txs.map(withCapitalizedDescription))
     .select();
   if (error) throw error;
   return data;

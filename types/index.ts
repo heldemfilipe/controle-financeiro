@@ -20,6 +20,31 @@ export interface Category {
   created_at: string;
 }
 
+/** Alterações feitas pelo usuário em um produto do histórico */
+export interface SavedProduct {
+  id: string;
+  key: string;
+  name: string;
+  category: string | null;
+  amount: number | null;
+  hidden: boolean;
+  created_at: string;
+}
+
+/** Produto do autocomplete: histórico de lançamentos + alterações salvas */
+export interface ProductSuggestion {
+  /** Nome normalizado (sem acentos e em minúsculas), identifica o produto */
+  key: string;
+  description: string;
+  category: string | null;
+  amount: number;
+  /** Quantos lançamentos usam este produto */
+  count: number;
+  hidden: boolean;
+  /** Grafias da descrição nos lançamentos, usadas ao renomear */
+  variants: string[];
+}
+
 export interface IncomeSource {
   id: string;
   name: string;

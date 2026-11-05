@@ -500,6 +500,10 @@ export default function LancamentosPage() {
         creditCards={creditCards}
         categories={categories}
         txSuggestions={txSuggestions}
+        onProductsChanged={() => {
+          loadAll().catch(console.error);
+          getTransactionSuggestions().then(setTxSuggestions).catch(console.error);
+        }}
         isCredit={isCredit}
         onIsCreditChange={setIsCredit}
         propagateCategory={propagateCategory}

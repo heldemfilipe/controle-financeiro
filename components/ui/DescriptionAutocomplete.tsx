@@ -2,22 +2,19 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { Search, Sparkles, Clock } from "lucide-react";
-import { formatCurrency } from "@/lib/utils";
-import type { Category } from "@/types";
+import { Search, Sparkles, Clock, Pencil, Settings2 } from "lucide-react";
+import { formatCurrency, normalizeText as normalize } from "@/lib/utils";
+import type { Category, ProductSuggestion } from "@/types";
 
-export type TxSuggestion = {
-  description: string;
-  category: string | null;
-  amount: number;
-  count: number;
-};
+export type TxSuggestion = ProductSuggestion;
 
 interface Props {
   value: string;
   onChange: (v: string) => void;
   /** Chamado ao selecionar uma sugestão — preenche description, category e amount */
   onSelect: (s: TxSuggestion) => void;
+  /** Abre a edição do produto salvo, sem preencher o formulário */
+  onEdit?: (s: TxSuggestion) => void;
   suggestions: TxSuggestion[];
   categories: Category[];
   placeholder?: string;
@@ -27,15 +24,11 @@ interface Props {
 const MAX_SHOWN = 8;
 const MIN_DROPDOWN_W = 380;
 
-/** Minúsculas e sem acentos/cedilha/til, para buscar "acai" e achar "Açaí" */
-function normalize(s: string) {
-  return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
-}
-
 export function DescriptionAutocomplete({
   value,
   onChange,
   onSelect,
+  onEdit,
   suggestions,
   categories,
   placeholder = "Ex: Supermercado Assaí",
@@ -75,7 +68,7 @@ export function DescriptionAutocomplete({
     const r = inputRef.current.getBoundingClientRect();
     // Se não há espaço abaixo, mostrar acima
     const spaceBelow = window.innerHeight - r.bottom;
-    const dropH = Math.min(filtered.length, MAX_SHOWN) * 54 + 32;
+    const dropH = Math.min(filtered.length, MAX_SHOWN) * 54 + 64;
     const top = spaceBelow < dropH && r.top > dropH ? r.top - dropH - 4 : r.bottom + 4;
     // Dropdown mais largo que o input (para caber o nome), limitado à viewport
     const width = Math.min(Math.max(r.width, MIN_DROPDOWN_W), window.innerWidth - 16);
@@ -162,17 +155,20 @@ export function DescriptionAutocomplete({
               {filtered.map((s, i) => {
                 const catObj = categories.find(c => c.name === s.category);
                 return (
-                  <button
-                    key={s.description}
-                    type="button"
-                    onMouseDown={e => { e.preventDefault(); select(s); }}
+                  <div
+                    key={s.key}
                     onMouseEnter={() => setCursor(i)}
-                    title={s.description}
-                    className={`w-full flex flex-col gap-1 px-3 py-2 text-left transition-colors border-t border-slate-50 dark:border-slate-700/30 first:border-0 ${
+                    className={`flex items-center border-t border-slate-50 dark:border-slate-700/30 first:border-0 transition-colors ${
                       i === cursor
                         ? "bg-primary-50 dark:bg-primary-900/30"
                         : "hover:bg-slate-50 dark:hover:bg-slate-700/40"
                     }`}
+                  >
+                  <button
+                    type="button"
+                    onMouseDown={e => { e.preventDefault(); select(s); }}
+                    title={s.description}
+                    className="flex-1 min-w-0 flex flex-col gap-1 px-3 py-2 text-left"
                   >
                     {/* Linha 1: descrição completa (até 2 linhas) */}
                     <span className="text-sm font-medium text-slate-700 dark:text-slate-200 leading-snug line-clamp-2 break-words">
@@ -207,6 +203,23 @@ export function DescriptionAutocomplete({
                       )}
                     </span>
                   </button>
+                  {onEdit && (
+                    <button
+                      type="button"
+                      onMouseDown={e => {
+                        e.preventDefault();
+                        setOpen(false);
+                        setCursor(-1);
+                        onEdit(s);
+                      }}
+                      title="Editar produto salvo"
+                      aria-label={`Editar ${s.description}`}
+                      className="p-2 mr-1.5 rounded-lg shrink-0 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
+                    >
+                      <Pencil size={13} />
+                    </button>
+                  )}
+                  </div>
                 );
               })}
             </div>
@@ -227,6 +240,19 @@ export function DescriptionAutocomplete({
                 — nova. Será sugerida automaticamente após salvar.
               </span>
             </div>
+          )}
+
+          {/* Atalho para a tela de produtos, em outra aba para não perder o lançamento */}
+          {onEdit && (
+            <a
+              href="/produtos"
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-1.5 px-3 py-2 text-xs text-slate-500 dark:text-slate-400 hover:text-primary-600 dark:hover:text-primary-400 border-t border-slate-100 dark:border-slate-700/50"
+            >
+              <Settings2 size={11} className="shrink-0" />
+              Ver todos os produtos salvos
+            </a>
           )}
         </div>,
         document.body,

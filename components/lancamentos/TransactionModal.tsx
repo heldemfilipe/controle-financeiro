@@ -1,10 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Toggle } from "@/components/ui/Toggle";
 import { DescriptionAutocomplete, type TxSuggestion } from "@/components/ui/DescriptionAutocomplete";
+import { ProductEditModal } from "@/components/produtos/ProductEditModal";
 import { MONTHS } from "@/types";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, normalizeText } from "@/lib/utils";
 import type { CardTransaction, CreditCard as CreditCardType, Category } from "@/types";
 
 interface TransactionModalProps {
@@ -17,6 +19,8 @@ interface TransactionModalProps {
   creditCards: CreditCardType[];
   categories: Category[];
   txSuggestions: TxSuggestion[];
+  /** Chamado depois de editar um produto salvo, para recarregar sugestões e lançamentos */
+  onProductsChanged: () => void;
   isCredit: boolean;
   onIsCreditChange: (v: boolean) => void;
   propagateCategory: boolean;
@@ -27,10 +31,27 @@ interface TransactionModalProps {
 
 export function TransactionModal({
   open, onClose, value, onChange, onSave, saving, creditCards, categories, txSuggestions,
-  isCredit, onIsCreditChange, propagateCategory, onPropagateCategoryChange, month, year,
+  onProductsChanged, isCredit, onIsCreditChange, propagateCategory, onPropagateCategoryChange,
+  month, year,
 }: TransactionModalProps) {
+  const [editingProduct, setEditingProduct] = useState<TxSuggestion | null>(null);
+
+  function handleProductSaved(saved: TxSuggestion, previous: TxSuggestion | null) {
+    setEditingProduct(null);
+    onProductsChanged();
+    // Mantém o formulário em dia se ele já estava usando este produto
+    if (!previous || normalizeText(value.description ?? "") !== previous.key) return;
+    onChange({
+      description: saved.description,
+      category: saved.category,
+      ...(Number(value.amount) === previous.amount ? { amount: saved.amount } : {}),
+    });
+  }
+
   return (
-    <Modal open={open} onClose={onClose}
+    <>
+    {/* Enquanto o produto é editado, Esc fecha só o modal de cima */}
+    <Modal open={open} onClose={() => { if (!editingProduct) onClose(); }}
       title={value.id ? "Editar Lançamento" : "Novo Lançamento no Cartão"}>
       <div className="space-y-3">
 
@@ -79,6 +100,7 @@ export function TransactionModal({
                 category: s.category ?? value.category,
                 ...(s.amount > 0 && !value.amount ? { amount: s.amount } : {}),
               })}
+              onEdit={setEditingProduct}
               suggestions={txSuggestions}
               categories={categories}
             />
@@ -216,5 +238,14 @@ export function TransactionModal({
         </div>
       </div>
     </Modal>
+
+    <ProductEditModal
+      target={editingProduct}
+      onClose={() => setEditingProduct(null)}
+      onSaved={handleProductSaved}
+      categories={categories}
+      products={txSuggestions}
+    />
+    </>
   );
 }

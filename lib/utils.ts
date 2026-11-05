@@ -16,6 +16,23 @@ export function filterRegularBills(bills: FixedBill[]): FixedBill[] {
   return bills.filter(b => !isTitheBill(b));
 }
 
+/** Minúsculas e sem acentos/cedilha/til, para comparar textos ("acai" = "Açaí") */
+export function normalizeText(text: string): string {
+  return text.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+}
+
+const WORD_START = new RegExp("(^|[\\s\\-/(])(\\p{L})", "gu");
+
+/** Primeira letra de cada palavra em maiúscula; o restante é mantido ("INTER", "NUBANK"). */
+export function capitalizeWords(text: string): string {
+  return text
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(WORD_START, (_, sep: string, letter: string) =>
+      sep + letter.toLocaleUpperCase("pt-BR"),
+    );
+}
+
 export function formatCurrency(value: number): string {
   return new Intl.NumberFormat("pt-BR", {
     style: "currency",

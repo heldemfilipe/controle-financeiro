@@ -82,6 +82,9 @@ export interface FixedBill {
   notes: string | null;
   is_tithe: boolean;
   active: boolean;
+  /** Primeiro mês/ano com a conta (null = vale em todos os meses); ignorado em parceladas */
+  start_month: number | null;
+  start_year: number | null;
   /** Primeiro mês/ano sem a conta (null = nunca termina); os meses anteriores seguem no saldo */
   stop_month: number | null;
   stop_year: number | null;

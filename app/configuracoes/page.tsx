@@ -481,7 +481,11 @@ export default function ConfiguracoesPage() {
           listBills={listBills}
           totalMonthlyBills={totalMonthlyBills}
           titheEstimate={titheEstimate}
-          onAdd={() => { setEditBill({}); setBillModal(true); }}
+          onAdd={() => {
+            const { month, year } = getCurrentMonth();
+            setEditBill({ start_month: month, start_year: year });
+            setBillModal(true);
+          }}
           onEdit={(bill) => { setEditBill(bill); setBillModal(true); }}
           onDelete={(bill) => setDeleteConfirm({ type: "bill", id: bill.id, name: bill.name })}
           onToggleActive={toggleBillActive}

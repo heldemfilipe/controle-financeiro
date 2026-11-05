@@ -2,6 +2,8 @@
 
 import { Save, AlertCircle } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
+import { BillStartFields } from "@/components/contas/BillStartFields";
+import { getCurrentMonth } from "@/lib/utils";
 import type { FixedBill } from "@/types";
 
 interface BillModalProps {
@@ -15,6 +17,8 @@ interface BillModalProps {
 }
 
 export function BillModal({ open, onClose, value, onChange, onSave, saving, error }: BillModalProps) {
+  const { month, year } = getCurrentMonth();
+
   return (
     <Modal open={open} onClose={onClose}
       title={value.id ? "Editar Conta Fixa" : "Nova Conta Fixa"} size="lg">
@@ -83,6 +87,8 @@ export function BillModal({ open, onClose, value, onChange, onSave, saving, erro
               onChange={e => onChange({ notes: e.target.value })} />
           </div>
         </div>
+
+        <BillStartFields value={value} onChange={onChange} month={month} year={year} />
 
         {error && (
           <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800/30 text-xs text-red-600 dark:text-red-400">

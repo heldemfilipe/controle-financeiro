@@ -406,9 +406,9 @@ export default function LancamentosPage() {
           month={month}
           year={year}
           titheAmount={titheAmount}
-          onAdd={() => { setEditBill({}); setBillModal(true); }}
+          onAdd={() => { setEditBill({ start_month: month, start_year: year }); setBillModal(true); }}
           onAddForPeriod={(period: BillPeriod | null) => {
-            setEditBill({ period: period as any });
+            setEditBill({ period: period as any, start_month: month, start_year: year });
             setFormErrors({});
             setBillModal(true);
           }}

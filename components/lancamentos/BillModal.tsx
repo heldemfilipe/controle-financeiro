@@ -1,6 +1,7 @@
 "use client";
 
 import { Modal } from "@/components/ui/Modal";
+import { BillStartFields } from "@/components/contas/BillStartFields";
 import { MONTHS } from "@/types";
 import { formatCurrency, installmentEndDate } from "@/lib/utils";
 import type { FixedBill, Category } from "@/types";
@@ -98,6 +99,8 @@ export function BillModal({ open, onClose, value, onChange, onSave, saving, cate
               onChange={e => onChange({ installment_current: Number(e.target.value) || null })} />
           </div>
         </div>
+
+        <BillStartFields value={value} onChange={onChange} month={month} year={year} />
 
         {/* Obs separado */}
         <div>

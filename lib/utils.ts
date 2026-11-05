@@ -185,11 +185,15 @@ export function computeInstallment(
   return null;
 }
 
-/** Indica se a conta vale no mês: ainda não encerrada e, se parcelada, dentro do período. */
+/** Indica se a conta vale no mês: já iniciada, não encerrada e, se parcelada, dentro do período. */
 export function isBillActiveInMonth(bill: FixedBill, month: number, year: number): boolean {
+  const abs = year * 12 + month;
   if (bill.stop_month != null && bill.stop_year != null
-      && year * 12 + month >= bill.stop_year * 12 + bill.stop_month) return false;
-  if (!bill.installment_total) return true;
+      && abs >= bill.stop_year * 12 + bill.stop_month) return false;
+  if (!bill.installment_total) {
+    return bill.start_month == null || bill.start_year == null
+      || abs >= bill.start_year * 12 + bill.start_month;
+  }
   if (bill.installment_start_month == null || bill.installment_start_year == null) return true;
   return computeInstallment(bill, month, year) !== null;
 }

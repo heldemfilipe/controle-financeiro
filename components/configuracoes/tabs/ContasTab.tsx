@@ -45,7 +45,7 @@ export function ContasTab({ billGroups, listBills, totalMonthlyBills, titheEstim
               <div className="flex items-center justify-between">
                 <h3 className="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wide">{label}</h3>
                 <span className="text-xs text-slate-500 dark:text-slate-400 font-semibold">
-                  {formatCurrency(groupBills.filter(b => b.active).reduce((s, b) => s + amountOf(b), 0))}
+                  {formatCurrency(groupBills.filter(b => b.stop_month == null).reduce((s, b) => s + amountOf(b), 0))}
                 </span>
               </div>
             </div>
@@ -53,7 +53,7 @@ export function ContasTab({ billGroups, listBills, totalMonthlyBills, titheEstim
               {groupBills.map((bill) => (
                 <div key={bill.id}
                   className={`flex items-center justify-between px-4 py-3 border-b border-slate-50 dark:border-slate-700/30 last:border-0 ${
-                    !bill.active ? "opacity-50" : ""
+                    bill.stop_month != null ? "opacity-50" : ""
                   }`}>
                   <div className="flex items-center gap-2.5 min-w-0">
                     <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
@@ -70,9 +70,9 @@ export function ContasTab({ billGroups, listBills, totalMonthlyBills, titheEstim
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5">
                         <p className="text-sm font-medium text-slate-700 dark:text-slate-200 truncate">{bill.name}</p>
-                        {!bill.active && (
+                        {bill.stop_month != null && (
                           <span className="text-xs bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-1.5 py-0.5 rounded-full shrink-0">
-                            inativa
+                            encerrada em {String(bill.stop_month).padStart(2, "0")}/{bill.stop_year}
                           </span>
                         )}
                       </div>
@@ -96,7 +96,7 @@ export function ContasTab({ billGroups, listBills, totalMonthlyBills, titheEstim
                   </div>
                   <div className="flex items-center gap-2 md:gap-3 shrink-0">
                     <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{isTitheBill(bill) && "≈ "}{formatCurrency(amountOf(bill))}</p>
-                    <Toggle size="sm" checked={bill.active} onChange={() => onToggleActive(bill)} />
+                    <Toggle size="sm" checked={bill.stop_month == null} onChange={() => onToggleActive(bill)} />
                     <div className="flex gap-1">
                       <button onClick={() => onEdit(bill)}
                         className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">

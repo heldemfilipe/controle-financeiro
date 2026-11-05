@@ -77,6 +77,16 @@ export async function upsertIncomeSource(source: Partial<IncomeSource>) {
   return data;
 }
 
+/** Encerra a receita: deixa de valer no mês informado, e os anteriores seguem no saldo */
+export async function endIncomeSource(id: string, month: number, year: number) {
+  const { error } = await supabase
+    .from("income_sources")
+    .update({ stop_month: month, stop_year: year })
+    .eq("id", id);
+  if (error) throw error;
+}
+
+/** Remove a receita de todos os meses, inclusive dos passados */
 export async function deleteIncomeSource(id: string) {
   const { error } = await supabase
     .from("income_sources")
@@ -146,6 +156,16 @@ export async function upsertFixedBill(bill: Partial<FixedBill>) {
   return data;
 }
 
+/** Encerra a conta no mês informado ou, com null, volta a valer sem data de fim */
+export async function setFixedBillStop(id: string, stop: { month: number; year: number } | null) {
+  const { error } = await supabase
+    .from("fixed_bills")
+    .update({ stop_month: stop?.month ?? null, stop_year: stop?.year ?? null })
+    .eq("id", id);
+  if (error) throw error;
+}
+
+/** Remove a conta de todos os meses, inclusive dos passados */
 export async function deleteFixedBill(id: string) {
   const { error } = await supabase
     .from("fixed_bills")

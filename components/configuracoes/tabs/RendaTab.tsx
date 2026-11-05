@@ -47,6 +47,11 @@ export function RendaTab({ sources, owners, totalMonthlyIncome, onAdd, onEdit, o
                     </div>
                     <div className="min-w-0">
                       <p className="font-semibold text-slate-700 dark:text-slate-200 text-sm truncate">{src.name}</p>
+                      {src.stop_month != null && (
+                        <span className="text-xs bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-1.5 py-0.5 rounded-full shrink-0">
+                          encerrada em {String(src.stop_month).padStart(2, "0")}/{src.stop_year}
+                        </span>
+                      )}
                       <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                         <span className="text-xs px-1.5 py-0.5 rounded-full font-medium"
                           style={{ backgroundColor: `${color}18`, color }}>

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { CategoryBadge } from "@/components/lancamentos/CategoryBadge";
 import { TotalSummaryCard } from "@/components/lancamentos/TotalSummaryCard";
-import { formatCurrency, computeInstallment, isTitheBill } from "@/lib/utils";
+import { formatCurrency, computeInstallment, isBillActiveInMonth, isTitheBill } from "@/lib/utils";
 import type { FixedBill, Category, BillPeriod } from "@/types";
 
 interface ContasTabProps {
@@ -24,12 +24,8 @@ export function ContasTab({ fixedBills, categories, month, year, titheAmount, on
   const [billGroupMode, setBillGroupMode] = useState<"quinzena" | "categoria">("quinzena");
   const amountOf = (b: FixedBill) => (isTitheBill(b) ? titheAmount : b.amount);
 
-  // Filtra contas fora do range ativo de parcelas para o mês selecionado
-  const visibleBills = fixedBills.filter(bill => {
-    if (!bill.installment_total) return true;
-    if (bill.installment_start_month == null || bill.installment_start_year == null) return true;
-    return computeInstallment(bill, month, year) !== null;
-  });
+  // Filtra contas encerradas ou fora do período de parcelas no mês selecionado
+  const visibleBills = fixedBills.filter(bill => isBillActiveInMonth(bill, month, year));
 
   // Agrupamento: por quinzena (padrão) ou por categoria
   const billsByGroup = (() => {

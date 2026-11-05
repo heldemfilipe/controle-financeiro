@@ -5,7 +5,7 @@ import {
   getBillAdvancesMadeInYear, getBillAdvancesForYear,
   getIncomeSourceAmounts,
 } from "./queries";
-import { computeInstallment, getAccConfig, resolveSourceAmount, isSourceActiveInMonth, isTitheBill } from "./utils";
+import { getAccConfig, isBillActiveInMonth, resolveSourceAmount, isSourceActiveInMonth, isTitheBill } from "./utils";
 import type { AccumuladoConfig } from "./utils";
 import { TITHE_RATE } from "./gastos-mensais/tithe";
 import type { FixedBill, IncomeSource, IncomeSourceAmount, MonthlyBalanceOverride, BillAdvance } from "@/types";
@@ -85,13 +85,9 @@ export async function computeMonthBalance(
   }, 0);
 
   // Contas fixas
-  const titheBill = allBills.find(b => isTitheBill(b));
+  const titheBill = allBills.find(b => isTitheBill(b) && isBillActiveInMonth(b, month, year));
   const regularBills = allBills.filter(b => !isTitheBill(b));
-  const visibleBills = regularBills.filter(bill => {
-    if (!bill.installment_total) return true;
-    if (bill.installment_start_month == null || bill.installment_start_year == null) return true;
-    return computeInstallment(bill, month, year) !== null;
-  });
+  const visibleBills = regularBills.filter(bill => isBillActiveInMonth(bill, month, year));
 
   const billIds = billPayments.map(b => b.bill_id);
   const missingBills = visibleBills.filter(b => !billIds.includes(b.id));

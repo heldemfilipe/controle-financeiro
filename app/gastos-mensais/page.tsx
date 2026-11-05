@@ -12,7 +12,7 @@ import {
   getBalanceOverride, upsertBalanceOverride, deleteBalanceOverride,
   getBillAdvancesMadeIn, getBillAdvancesForMonth, createBillAdvance, deleteBillAdvance,
 } from "@/lib/queries";
-import { getCurrentMonth, isOverdue, computeInstallment, getAccConfig, saveAccConfig, resolveSourceAmount, isTitheBill } from "@/lib/utils";
+import { getCurrentMonth, isOverdue, isBillActiveInMonth, getAccConfig, saveAccConfig, resolveSourceAmount, isTitheBill } from "@/lib/utils";
 import type { AccumuladoConfig } from "@/lib/utils";
 import { computePrevBalance, clearBalanceCache } from "@/lib/balance";
 import { calcTithe } from "@/lib/gastos-mensais/tithe";
@@ -146,15 +146,11 @@ export default function GastosMensaisPage() {
   // ── Valores derivados ──────────────────────────────────────────────────────
 
   const tithe       = calcTithe(incomeSources, monthlyIncomes, month, year, sourceAmounts);
-  const titheBill   = fixedBills.find(b => isTitheBill(b));
+  const titheBill   = fixedBills.find(b => isTitheBill(b) && isBillActiveInMonth(b, month, year));
   const regularBills = fixedBills.filter(b => !isTitheBill(b));
 
-  // Filtra contas fora do período de parcelas (antes do início ou após o fim)
-  const visibleRegularBills = regularBills.filter(bill => {
-    if (!bill.installment_total) return true; // sem parcelamento → sempre visível
-    if (bill.installment_start_month == null || bill.installment_start_year == null) return true; // sem data → fallback visível
-    return computeInstallment(bill, month, year) !== null;
-  });
+  // Filtra contas encerradas ou fora do período de parcelas
+  const visibleRegularBills = regularBills.filter(bill => isBillActiveInMonth(bill, month, year));
 
   const incomeTotal = incomeSources.reduce((s, src) => {
     const mi = monthlyIncomes.find(i => i.source_id === src.id);

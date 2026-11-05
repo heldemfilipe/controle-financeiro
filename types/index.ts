@@ -82,6 +82,9 @@ export interface FixedBill {
   notes: string | null;
   is_tithe: boolean;
   active: boolean;
+  /** Primeiro mês/ano sem a conta (null = nunca termina); os meses anteriores seguem no saldo */
+  stop_month: number | null;
+  stop_year: number | null;
   created_at: string;
 }
 

@@ -1,44 +1,63 @@
 "use client";
 
-import { AlertCircle, Trash2 } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
+import { getCurrentMonth, getMonthName } from "@/lib/utils";
+
+export type DeleteScope = "from_month" | "all";
 
 export interface DeleteTarget {
   type: string;
   id: string;
   name: string;
+  /** Receita avulsa existe em um único mês, então não há o que encerrar */
+  oneTime?: boolean;
 }
 
 interface DeleteConfirmModalProps {
   target: DeleteTarget | null;
   onClose: () => void;
-  onConfirm: (target: DeleteTarget) => void;
+  onConfirm: (target: DeleteTarget, scope: DeleteScope) => void;
 }
 
 export function DeleteConfirmModal({ target, onClose, onConfirm }: DeleteConfirmModalProps) {
+  const { month, year } = getCurrentMonth();
+
   return (
-    <Modal open={!!target} onClose={onClose}
-      title="Confirmar Exclusão" size="sm">
-      <div className="text-center space-y-4">
-        <div className="w-12 h-12 bg-red-50 dark:bg-red-900/20 rounded-full flex items-center justify-center mx-auto">
-          <AlertCircle size={22} className="text-red-500" />
+    <Modal open={!!target} onClose={onClose} title="Confirmar Exclusão" size="sm">
+      <div className="space-y-4">
+        <div className="text-center">
+          <div className="w-12 h-12 bg-red-50 dark:bg-red-900/20 rounded-full flex items-center justify-center mx-auto mb-3">
+            <AlertCircle size={22} className="text-red-500" />
+          </div>
+          <p className="text-sm text-slate-600 dark:text-slate-300">Como deseja remover</p>
+          <p className="font-bold text-slate-800 dark:text-slate-100 mt-0.5">&ldquo;{target?.name}&rdquo;?</p>
         </div>
-        <div>
-          <p className="text-sm text-slate-600 dark:text-slate-300">Tem certeza que deseja remover</p>
-          <p className="font-bold text-slate-800 dark:text-slate-100 mt-0.5">"{target?.name}"?</p>
-          <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
-            Esta ação irá desativar o item. O histórico de pagamentos será preservado.
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <button onClick={onClose} className="btn-secondary flex-1">
-            Cancelar
+
+        <div className="flex flex-col gap-2">
+          {!target?.oneTime && (
+            <button
+              onClick={() => target && onConfirm(target, "from_month")}
+              className="w-full text-left px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
+            >
+              <p className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                A partir de {getMonthName(month)}/{year}
+              </p>
+              <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Os meses anteriores continuam no saldo</p>
+            </button>
+          )}
+          <button
+            onClick={() => target && onConfirm(target, "all")}
+            className="w-full text-left px-4 py-3 rounded-xl border border-red-200 dark:border-red-800/50 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+          >
+            <p className="text-sm font-medium text-red-600 dark:text-red-400">De todos os meses</p>
+            <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Para lançamento feito por engano; muda o saldo dos meses passados</p>
           </button>
           <button
-            onClick={() => target && onConfirm(target)}
-            className="flex-1 bg-red-600 hover:bg-red-700 text-white font-medium px-4 py-2 rounded-lg transition-colors text-sm flex items-center justify-center gap-2"
+            onClick={onClose}
+            className="w-full px-4 py-2.5 rounded-xl text-sm text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors"
           >
-            <Trash2 size={14} /> Remover
+            Cancelar
           </button>
         </div>
       </div>

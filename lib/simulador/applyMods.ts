@@ -1,4 +1,4 @@
-import { computeInstallment } from "@/lib/utils";
+import { isBillActiveInMonth } from "@/lib/utils";
 import { calculateAmortization } from "@/lib/loan";
 import type { FixedBill, MonthlyBalanceOverride } from "@/types";
 
@@ -58,12 +58,8 @@ export function newMod(): ScenarioMod {
 
 /** Verifica se uma conta tem alguma parcela ativa no ano informado */
 export function isBillActiveInYear(bill: FixedBill, year: number): boolean {
-  if (!bill.installment_total || bill.installment_start_month == null || bill.installment_start_year == null) {
-    return true; // conta fixa sem parcelas = sempre ativa
-  }
-  // Verifica se ao menos um mês do ano tem parcela ativa
   for (let m = 1; m <= 12; m++) {
-    if (computeInstallment(bill, m, year) !== null) return true;
+    if (isBillActiveInMonth(bill, m, year)) return true;
   }
   return false;
 }
@@ -131,9 +127,7 @@ export function applyMods(
           if (row.month < mod.startMonth || row.month > mod.endMonth) break;
           const bill = bills.find(b => b.id === mod.billId);
           if (!bill) break;
-          if (bill.installment_total && bill.installment_start_month != null && bill.installment_start_year != null) {
-            if (computeInstallment(bill, row.month, year) === null) break;
-          }
+          if (!isBillActiveInMonth(bill, row.month, year)) break;
           billsTotal = Math.max(0, billsTotal - bill.amount);
           break;
         }
@@ -150,14 +144,7 @@ export function applyMods(
             billsTotal = Math.max(0, billsTotal - bill.amount);
           } else if (row.month > mod.startMonth) {
             // Meses após a quitação: remove a parcela (já foi pago)
-            const isInstallment = bill.installment_total != null &&
-              bill.installment_start_month != null &&
-              bill.installment_start_year != null;
-            if (isInstallment) {
-              if (computeInstallment(bill, row.month, year) !== null) {
-                billsTotal = Math.max(0, billsTotal - bill.amount);
-              }
-            } else {
+            if (isBillActiveInMonth(bill, row.month, year)) {
               billsTotal = Math.max(0, billsTotal - bill.amount);
             }
           }

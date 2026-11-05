@@ -1,6 +1,6 @@
 import * as XLSX from "xlsx";
 import type { FixedBill } from "@/types";
-import { computeInstallment, resolveSourceAmount, isSourceActiveInMonth, isTitheBill } from "@/lib/utils";
+import { computeInstallment, isBillActiveInMonth, resolveSourceAmount, isSourceActiveInMonth, isTitheBill } from "@/lib/utils";
 import { TITHE_RATE } from "@/lib/gastos-mensais/tithe";
 import { MONTHS } from "@/types";
 import {
@@ -86,9 +86,7 @@ export async function exportFinanceiro(year: number) {
         const billAmt = fixedBills.filter(b => {
           if (isTitheBill(b)) return false;
           if ((b.category || "outros") !== cat) return false;
-          if (!b.installment_total) return true;
-          if (b.installment_start_month == null || b.installment_start_year == null) return true;
-          return computeInstallment(b, m, year) !== null;
+          return isBillActiveInMonth(b, m, year);
         }).reduce((s, b) => {
           const p = monthBillPays.find(p => p.bill_id === b.id);
           return s + (p?.amount ?? b.amount);
@@ -235,7 +233,7 @@ export async function exportMonth(month: number, year: number) {
   const wb = XLSX.utils.book_new();
   const monthName = MONTHS[month - 1];
 
-  const [bills, incomeSources, cards, txs, billPays, incomes, srcAmounts] = await Promise.all([
+  const [allBills, incomeSources, cards, txs, billPays, incomes, srcAmounts] = await Promise.all([
     getFixedBills(),
     getIncomeSources(month, year),
     getCreditCards(),
@@ -244,6 +242,7 @@ export async function exportMonth(month: number, year: number) {
     getMonthlyIncomes(month, year),
     getIncomeSourceAmounts(),
   ]);
+  const bills = allBills.filter(b => isBillActiveInMonth(b, month, year));
 
   // Valor efetivo de cada conta no mês
   function billAmt(b: FixedBill): number {

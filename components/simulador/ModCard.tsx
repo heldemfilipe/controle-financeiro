@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertCircle, Trash2, Calculator } from "lucide-react";
-import { formatCurrency, getMonthName, computeInstallment } from "@/lib/utils";
+import { formatCurrency, getMonthName, isBillActiveInMonth } from "@/lib/utils";
 import { calculateAmortization, loanSummary } from "@/lib/loan";
 import { isBillActiveInYear, remainingInstallments, isModValid } from "@/lib/simulador/applyMods";
 import type { ScenarioMod, ModType } from "@/lib/simulador/applyMods";
@@ -309,8 +309,7 @@ export function ModCard({ mod, idx, year, bills, onUpdate, onRemove }: ModCardPr
         // Conta apenas meses em que a parcela está ativa no ano
         const activeMonths = MONTH_OPTS.filter(m => {
           if (m < mod.startMonth || m > mod.endMonth) return false;
-          if (!bill.installment_total || bill.installment_start_month == null || bill.installment_start_year == null) return true;
-          return computeInstallment(bill, m, year) !== null;
+          return isBillActiveInMonth(bill, m, year);
         });
         if (activeMonths.length === 0) return (
           <p className="pl-7 text-xs text-amber-500">Parcela encerra antes do período selecionado</p>

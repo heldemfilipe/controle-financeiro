@@ -4,12 +4,12 @@ import { useEffect, useState } from "react";
 import { TrendingUp, CreditCard, FileText, UserPlus, Users, Check } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import {
-  getIncomeSources, upsertIncomeSource, deleteIncomeSource,
+  getIncomeSources, upsertIncomeSource, deleteIncomeSource, endIncomeSource,
   getCreditCards, upsertCreditCard,
-  getFixedBills, upsertFixedBill, deleteFixedBill,
+  getFixedBills, upsertFixedBill, deleteFixedBill, setFixedBillStop,
   getIncomeSourceAmounts, upsertIncomeSourceAmount, deleteIncomeSourceAmount,
 } from "@/lib/queries";
-import { formatCurrency, isTitheBill } from "@/lib/utils";
+import { formatCurrency, getCurrentMonth, isSourceActiveInMonth, isTitheBill } from "@/lib/utils";
 import { TITHE_RATE } from "@/lib/gastos-mensais/tithe";
 import { createSupabaseBrowser } from "@/lib/supabase-browser";
 import { getOwners, saveOwners, slugify, DEFAULT_OWNERS, type Owner } from "@/lib/owners";
@@ -29,7 +29,7 @@ import { EditUserModal } from "@/components/configuracoes/EditUserModal";
 import { ChangePasswordModal } from "@/components/configuracoes/ChangePasswordModal";
 import { BanUserModal } from "@/components/configuracoes/BanUserModal";
 import { HistoryModal, type NewAmountForm } from "@/components/configuracoes/HistoryModal";
-import { DeleteConfirmModal, type DeleteTarget } from "@/components/configuracoes/DeleteConfirmModal";
+import { DeleteConfirmModal, type DeleteScope, type DeleteTarget } from "@/components/configuracoes/DeleteConfirmModal";
 
 type Tab = "renda" | "cartoes" | "contas" | "integrantes" | "usuarios";
 
@@ -137,8 +137,13 @@ export default function ConfiguracoesPage() {
     setSourceModal(false); setEditSource({}); setSaveError("");
   }
 
-  async function handleDeleteSource(id: string) {
-    await deleteIncomeSource(id);
+  async function handleDeleteSource(id: string, scope: DeleteScope) {
+    if (scope === "from_month") {
+      const { month, year } = getCurrentMonth();
+      await endIncomeSource(id, month, year);
+    } else {
+      await deleteIncomeSource(id);
+    }
     setDeleteConfirm(null);
     await loadAll(); showSaved();
   }
@@ -222,14 +227,18 @@ export default function ConfiguracoesPage() {
     setBillModal(false); setEditBill({}); setSaveError("");
   }
 
-  async function handleDeleteBill(id: string) {
-    await deleteFixedBill(id);
+  async function handleDeleteBill(id: string, scope: DeleteScope) {
+    if (scope === "from_month") {
+      await setFixedBillStop(id, getCurrentMonth());
+    } else {
+      await deleteFixedBill(id);
+    }
     setDeleteConfirm(null);
     await loadAll(); showSaved();
   }
 
   async function toggleBillActive(bill: FixedBill) {
-    await upsertFixedBill({ ...bill, active: !bill.active });
+    await setFixedBillStop(bill.id, bill.stop_month == null ? getCurrentMonth() : null);
     await loadAll();
   }
 
@@ -351,7 +360,7 @@ export default function ConfiguracoesPage() {
   const tabs: { key: Tab; label: string; icon: any; count: number; adminOnly?: boolean }[] = [
     { key: "renda", label: "Fontes de Renda", icon: TrendingUp, count: sources.filter(s => s.is_recurring !== false).length },
     { key: "cartoes", label: "Cartões de Crédito", icon: CreditCard, count: cards.length },
-    { key: "contas", label: "Contas Fixas", icon: FileText, count: listBills.filter(b => b.active).length },
+    { key: "contas", label: "Contas Fixas", icon: FileText, count: listBills.filter(b => b.stop_month == null).length },
     { key: "integrantes", label: "Integrantes", icon: UserPlus, count: owners.length },
     { key: "usuarios", label: "Usuários", icon: Users, count: users.length, adminOnly: true },
   ];
@@ -381,10 +390,13 @@ export default function ConfiguracoesPage() {
       .filter(g => g.bills.length > 0);
   })();
 
-  const totalMonthlyIncome = sources.filter(s => s.is_recurring !== false).reduce((s, s2) => s + s2.base_amount, 0);
+  const { month: currentMonth, year: currentYear } = getCurrentMonth();
+  const totalMonthlyIncome = sources
+    .filter(s => s.is_recurring !== false && isSourceActiveInMonth(s, currentMonth, currentYear))
+    .reduce((s, s2) => s + s2.base_amount, 0);
   // Dízimo é sempre 10% da renda (estimado aqui pela renda base)
   const titheEstimate = totalMonthlyIncome * TITHE_RATE;
-  const totalMonthlyBills = listBills.filter(b => b.active).reduce((s, b) => s + (isTitheBill(b) ? titheEstimate : b.amount), 0);
+  const totalMonthlyBills = listBills.filter(b => b.stop_month == null).reduce((s, b) => s + (isTitheBill(b) ? titheEstimate : b.amount), 0);
 
   return (
     <div className="p-4 md:p-6 min-h-screen">
@@ -406,7 +418,7 @@ export default function ConfiguracoesPage() {
         <div className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/50 rounded-xl p-3 text-center transition-colors">
           <p className="text-xs text-slate-500 dark:text-slate-400 mb-0.5">Contas Fixas/mês</p>
           <p className="text-lg font-bold text-red-700 dark:text-red-400">{formatCurrency(totalMonthlyBills)}</p>
-          <p className="text-xs text-slate-400 dark:text-slate-500">{listBills.filter(b => b.active).length} ativa{listBills.filter(b => b.active).length !== 1 ? "s" : ""}</p>
+          <p className="text-xs text-slate-400 dark:text-slate-500">{listBills.filter(b => b.stop_month == null).length} ativa{listBills.filter(b => b.stop_month == null).length !== 1 ? "s" : ""}</p>
         </div>
         <div className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700/50 rounded-xl p-3 text-center transition-colors">
           <p className="text-xs text-slate-500 dark:text-slate-400 mb-0.5">Cartões Cadastrados</p>
@@ -448,7 +460,7 @@ export default function ConfiguracoesPage() {
           totalMonthlyIncome={totalMonthlyIncome}
           onAdd={() => { setEditSource({}); setSourceModal(true); }}
           onEdit={(src) => { setEditSource(src); setSourceModal(true); }}
-          onDelete={(src) => setDeleteConfirm({ type: "source", id: src.id, name: src.name })}
+          onDelete={(src) => setDeleteConfirm({ type: "source", id: src.id, name: src.name, oneTime: src.is_recurring === false })}
           onHistory={openHistory}
         />
       )}
@@ -592,9 +604,9 @@ export default function ConfiguracoesPage() {
       <DeleteConfirmModal
         target={deleteConfirm}
         onClose={() => setDeleteConfirm(null)}
-        onConfirm={(t) => {
-          if (t.type === "source") handleDeleteSource(t.id);
-          if (t.type === "bill") handleDeleteBill(t.id);
+        onConfirm={(t, scope) => {
+          if (t.type === "source") handleDeleteSource(t.id, scope);
+          if (t.type === "bill") handleDeleteBill(t.id, scope);
         }}
       />
     </div>

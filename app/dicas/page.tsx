@@ -15,7 +15,7 @@ import {
 } from "@/lib/queries";
 import {
   formatCurrency, getCurrentMonth, getMonthName,
-  filterRegularBills, computeInstallment, resolveSourceAmount,
+  filterRegularBills, computeInstallment, isBillActiveInMonth, resolveSourceAmount,
 } from "@/lib/utils";
 import type {
   FixedBill, MonthlyBillPayment,
@@ -298,11 +298,7 @@ export default function DicasPage() {
       }, 0);
 
       const regularBills = filterRegularBills(bills);
-      const visibleBills = regularBills.filter(b => {
-        if (!b.installment_total) return true;
-        if (b.installment_start_month == null || b.installment_start_year == null) return true;
-        return computeInstallment(b, month, year) !== null;
-      });
+      const visibleBills = regularBills.filter(b => isBillActiveInMonth(b, month, year));
 
       const billAmts = visibleBills.reduce((s, b) => {
         const p = payments.find(p => p.bill_id === b.id);

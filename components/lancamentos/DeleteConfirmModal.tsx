@@ -1,21 +1,45 @@
 "use client";
 
 import { Modal } from "@/components/ui/Modal";
+import { MONTHS } from "@/types";
 import type { FixedBill, CardTransaction } from "@/types";
 
 export type DeleteTarget =
-  | { type: "income"; id: string; label: string }
+  | { type: "income"; id: string; label: string; recurring: boolean }
   | { type: "bill";   bill: FixedBill }
   | { type: "tx";     tx: CardTransaction };
 
 interface DeleteConfirmModalProps {
   target: DeleteTarget | null;
   onClose: () => void;
-  onConfirm: (scope: "this" | "following" | "permanent") => void;
+  onConfirm: (scope: "this" | "following" | "from_month" | "permanent") => void;
   saving: boolean;
+  month: number;
+  year: number;
 }
 
-export function DeleteConfirmModal({ target, onClose, onConfirm, saving }: DeleteConfirmModalProps) {
+export function DeleteConfirmModal({ target, onClose, onConfirm, saving, month, year }: DeleteConfirmModalProps) {
+  const endOptions = (
+    <>
+      <button
+        onClick={() => onConfirm("from_month")}
+        disabled={saving}
+        className="w-full text-left px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
+      >
+        <p className="text-sm font-medium text-slate-700 dark:text-slate-200">A partir de {MONTHS[month - 1]}/{year}</p>
+        <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Os meses anteriores continuam no saldo</p>
+      </button>
+      <button
+        onClick={() => onConfirm("permanent")}
+        disabled={saving}
+        className="w-full text-left px-4 py-3 rounded-xl border border-red-200 dark:border-red-800/50 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+      >
+        <p className="text-sm font-medium text-red-600 dark:text-red-400">De todos os meses</p>
+        <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Para lançamento feito por engano; muda o saldo dos meses passados</p>
+      </button>
+    </>
+  );
+
   return (
     <Modal open={!!target} onClose={onClose} title="Remover lançamento" size="sm">
       {target && (
@@ -23,7 +47,7 @@ export function DeleteConfirmModal({ target, onClose, onConfirm, saving }: Delet
           {/* Descrição */}
           <p className="text-sm text-slate-600 dark:text-slate-300">
             {target.type === "income" && (
-              <>Remover a receita <strong>"{target.label}"</strong>?</>
+              <>{target.recurring ? "Como deseja remover" : "Remover"} a receita <strong>"{target.label}"</strong>?</>
             )}
             {target.type === "bill" && (
               <><strong>"{target.bill.name}"</strong> é uma conta recorrente. Como deseja remover?</>
@@ -48,16 +72,11 @@ export function DeleteConfirmModal({ target, onClose, onConfirm, saving }: Delet
                   <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Só este mês</p>
                   <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">A conta continua nos meses seguintes</p>
                 </button>
-                <button
-                  onClick={() => onConfirm("permanent")}
-                  disabled={saving}
-                  className="w-full text-left px-4 py-3 rounded-xl border border-red-200 dark:border-red-800/50 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                >
-                  <p className="text-sm font-medium text-red-600 dark:text-red-400">Remover permanentemente</p>
-                  <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">Remove a conta de todos os meses</p>
-                </button>
+                {endOptions}
               </>
             )}
+
+            {target.type === "income" && target.recurring && endOptions}
 
             {target.type === "tx" && target.tx.installment_total > 1 && (
               <>
@@ -80,7 +99,7 @@ export function DeleteConfirmModal({ target, onClose, onConfirm, saving }: Delet
               </>
             )}
 
-            {((target.type === "tx" && target.tx.installment_total <= 1) || target.type === "income") && (
+            {((target.type === "tx" && target.tx.installment_total <= 1) || (target.type === "income" && !target.recurring)) && (
               <button
                 onClick={() => onConfirm("this")}
                 disabled={saving}

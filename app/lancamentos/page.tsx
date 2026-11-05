@@ -6,8 +6,8 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { MonthSelector } from "@/components/ui/MonthSelector";
 import { useToast } from "@/components/ui/Toast";
 import {
-  getIncomeSources, upsertIncomeSource, deleteIncomeSource,
-  getFixedBills, upsertFixedBill, deleteFixedBill,
+  getIncomeSources, upsertIncomeSource, deleteIncomeSource, endIncomeSource,
+  getFixedBills, upsertFixedBill, deleteFixedBill, setFixedBillStop,
   getCategories,
   getCreditCards, upsertCreditCard,
   getCardTransactions, upsertCardTransaction, deleteCardTransaction,
@@ -131,7 +131,7 @@ export default function LancamentosPage() {
   }
 
   function removeIncome(src: IncomeSource) {
-    setDeleteTarget({ type: "income", id: src.id, label: src.name });
+    setDeleteTarget({ type: "income", id: src.id, label: src.name, recurring: src.is_recurring !== false });
   }
 
   // ── Ajuste de valor somente no mês selecionado ────────────────────────────────
@@ -311,17 +311,25 @@ export default function LancamentosPage() {
     setDeleteTarget({ type: "tx", tx });
   }
 
-  async function confirmDelete(scope: "this" | "following" | "permanent") {
+  async function confirmDelete(scope: "this" | "following" | "from_month" | "permanent") {
     if (!deleteTarget) return;
     setLoading(true);
     try {
       if (deleteTarget.type === "income") {
-        await deleteIncomeSource(deleteTarget.id);
-        toast("Receita removida");
+        if (scope === "from_month") {
+          await endIncomeSource(deleteTarget.id, month, year);
+          toast("Receita encerrada");
+        } else {
+          await deleteIncomeSource(deleteTarget.id);
+          toast("Receita removida");
+        }
       } else if (deleteTarget.type === "bill") {
         if (scope === "this") {
           await upsertMonthlyBillPayment({ bill_id: deleteTarget.bill.id, month, year, amount: 0 });
           toast("Conta ignorada neste mês");
+        } else if (scope === "from_month") {
+          await setFixedBillStop(deleteTarget.bill.id, { month, year });
+          toast("Conta encerrada");
         } else {
           await deleteFixedBill(deleteTarget.bill.id);
           toast("Conta removida");
@@ -511,6 +519,8 @@ export default function LancamentosPage() {
       <DeleteConfirmModal
         target={deleteTarget}
         onClose={() => setDeleteTarget(null)}
+        month={month}
+        year={year}
         onConfirm={confirmDelete}
         saving={loading}
       />

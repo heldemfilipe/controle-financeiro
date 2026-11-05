@@ -11,7 +11,7 @@ import {
 } from "@/lib/queries";
 import { computePrevBalance, clearBalanceCache } from "@/lib/balance";
 import type { MonthlyBillPayment, CardTransaction, BillAdvance } from "@/types";
-import { formatCurrency, getCurrentMonth, getMonthName, filterRegularBills, getAccConfig, computeInstallment, resolveSourceAmount, isTitheBill } from "@/lib/utils";
+import { formatCurrency, getCurrentMonth, getMonthName, filterRegularBills, getAccConfig, isBillActiveInMonth, resolveSourceAmount, isTitheBill } from "@/lib/utils";
 import { TITHE_RATE } from "@/lib/gastos-mensais/tithe";
 import type { Category, FixedBill, CreditCard as CreditCardType, IncomeSourceAmount } from "@/types";
 
@@ -118,7 +118,7 @@ export default function AnalisePage() {
       setCategories(cats);
       setCreditCards(cards);
       setAdvancedBillIds(new Set(advancesFor.map(a => a.bill_id)));
-      const tithe = bills.find(b => isTitheBill(b)) ?? null;
+      const tithe = bills.find(b => isTitheBill(b) && isBillActiveInMonth(b, month, year)) ?? null;
       const regular = filterRegularBills(bills);
       setFixedBills(regular);
       setTitheBill(tithe);
@@ -151,11 +151,7 @@ export default function AnalisePage() {
         const p = prevPayments.find((pp: MonthlyBillPayment) => pp.bill_id === b.id);
         prevBillAmts[b.id] = p?.amount ?? b.amount;
       });
-      const prevVisibleBills = regular.filter(b => {
-        if (!b.installment_total) return true;
-        if (b.installment_start_month == null || b.installment_start_year == null) return true;
-        return computeInstallment(b, pm, py) !== null;
-      });
+      const prevVisibleBills = regular.filter(b => isBillActiveInMonth(b, pm, py));
       const prevMap: Record<string, number> = {};
       prevVisibleBills.forEach(b => {
         if (prevAdvancedIds.has(b.id)) return;
@@ -181,11 +177,7 @@ export default function AnalisePage() {
 
   // ─── Dados derivados ──────────────────────────────────────────────────────────
 
-  const visibleFixedBills = fixedBills.filter(b => {
-    if (!b.installment_total) return true;
-    if (b.installment_start_month == null || b.installment_start_year == null) return true;
-    return computeInstallment(b, month, year) !== null;
-  });
+  const visibleFixedBills = fixedBills.filter(b => isBillActiveInMonth(b, month, year));
 
   const categoryMap: Record<string, number> = {};
   visibleFixedBills.forEach(b => {

@@ -14,7 +14,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { MonthSelector } from "@/components/ui/MonthSelector";
 import { ChartTooltip } from "@/components/ui/ChartTooltip";
 import { getCreditCards, getCardTransactions } from "@/lib/queries";
-import { formatCurrency, getCurrentMonth, getMonthName } from "@/lib/utils";
+import { formatCurrency, getCurrentMonth, getMonthName, sumTransactions } from "@/lib/utils";
 import { MONTH_SHORT } from "@/types";
 import type { CreditCard as CreditCardType, CardTransaction } from "@/types";
 
@@ -54,9 +54,7 @@ export default function GastosCataoesPage() {
           const monthTxs = allTxs[i];
           const row: any = { name: MONTH_SHORT[i] };
           cards.forEach(card => {
-            row[card.name] = monthTxs
-              .filter(t => t.card_id === card.id)
-              .reduce((s, t) => s + Math.abs(t.amount), 0);
+            row[card.name] = sumTransactions(monthTxs.filter(t => t.card_id === card.id));
           });
           return row;
         });
@@ -69,11 +67,12 @@ export default function GastosCataoesPage() {
 
   const cardStats = cards.map(card => {
     const cardTxs = txs.filter(t => t.card_id === card.id);
-    const total = cardTxs.reduce((s, t) => s + Math.abs(t.amount), 0);
+    const total = sumTransactions(cardTxs);
     const count = cardTxs.length;
     const avg = count > 0 ? total / count : 0;
-    const biggest = cardTxs.length > 0
-      ? cardTxs.reduce((max, t) => Math.abs(t.amount) > Math.abs(max.amount) ? t : max, cardTxs[0])
+    const expenses = cardTxs.filter(t => t.amount < 0);
+    const biggest = expenses.length > 0
+      ? expenses.reduce((max, t) => t.amount < max.amount ? t : max, expenses[0])
       : null;
     return { card, total, count, avg, biggest, txs: cardTxs };
   }).sort((a, b) => b.total - a.total);
@@ -85,8 +84,9 @@ export default function GastosCataoesPage() {
     .filter(c => c.total > 0)
     .map(c => ({ name: c.card.name, value: c.total, color: c.card.color }));
 
-  const topTxs = [...txs]
-    .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount))
+  const topTxs = txs
+    .filter(t => t.amount < 0)
+    .sort((a, b) => a.amount - b.amount)
     .slice(0, 10);
 
   const descMap: Record<string, { count: number; total: number }> = {};
@@ -94,7 +94,7 @@ export default function GastosCataoesPage() {
     const key = t.description.toLowerCase().trim();
     if (!descMap[key]) descMap[key] = { count: 0, total: 0 };
     descMap[key].count++;
-    descMap[key].total += Math.abs(t.amount);
+    descMap[key].total -= t.amount;
   });
   const topPlaces = Object.entries(descMap)
     .sort((a, b) => b[1].total - a[1].total)

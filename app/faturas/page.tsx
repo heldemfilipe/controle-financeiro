@@ -16,7 +16,7 @@ import {
   getMonthlyCardPayments, toggleCardPaid,
   upsertCardTransaction, deleteCardTransaction,
 } from "@/lib/queries";
-import { formatCurrency, getCurrentMonth, isOverdue } from "@/lib/utils";
+import { formatCurrency, getCurrentMonth, isOverdue, sumTransactions } from "@/lib/utils";
 import { MONTH_SHORT } from "@/types";
 import type { CreditCard as CreditCardType, CardTransaction, MonthlyCardPayment } from "@/types";
 
@@ -66,7 +66,7 @@ export default function FaturasPage() {
           const mt = await getCardTransactionsByCard(selectedCard.id, m, year);
           return {
             name: MONTH_SHORT[i],
-            total: mt.reduce((s, t) => s + Math.abs(t.amount), 0),
+            total: sumTransactions(mt),
           };
         })
       );
@@ -75,9 +75,7 @@ export default function FaturasPage() {
   }
 
   async function handleToggleCard(card: CreditCardType, paid: boolean) {
-    const total = allTxsThisMonth
-      .filter(t => t.card_id === card.id)
-      .reduce((s, t) => s + Math.abs(t.amount), 0);
+    const total = getCardTotal(card.id);
     await toggleCardPaid(card.id, month, year, paid, total);
     await loadMonthData();
   }
@@ -121,11 +119,12 @@ export default function FaturasPage() {
     : null;
 
   const selectedTotal = selectedCard
-    ? allTxsThisMonth.filter(t => t.card_id === selectedCard.id).reduce((s, t) => s + Math.abs(t.amount), 0)
+    ? getCardTotal(selectedCard.id)
     : 0;
 
-  const getCardTotal = (cardId: string) =>
-    allTxsThisMonth.filter(t => t.card_id === cardId).reduce((s, t) => s + Math.abs(t.amount), 0);
+  function getCardTotal(cardId: string) {
+    return sumTransactions(allTxsThisMonth.filter(t => t.card_id === cardId));
+  }
 
   const getCardStatus = (card: CreditCardType) => {
     const p = cardPayments.find(p => p.card_id === card.id);
@@ -135,7 +134,7 @@ export default function FaturasPage() {
     return "pending";
   };
 
-  const grandTotal = allTxsThisMonth.reduce((s, t) => s + Math.abs(t.amount), 0);
+  const grandTotal = sumTransactions(allTxsThisMonth);
 
   return (
     <div className="p-4 md:p-6 min-h-screen">
@@ -318,8 +317,8 @@ export default function FaturasPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-semibold text-red-600">
-                        -{formatCurrency(Math.abs(tx.amount))}
+                      <span className={`text-sm font-semibold ${tx.amount > 0 ? "text-emerald-600" : "text-red-600"}`}>
+                        {tx.amount > 0 ? "+" : "-"}{formatCurrency(Math.abs(tx.amount))}
                       </span>
                       <button
                         onClick={() => removeTx(tx.id)}

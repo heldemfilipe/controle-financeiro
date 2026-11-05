@@ -1,5 +1,5 @@
 import { supabase } from "./supabase";
-import { capitalizeWords, isSourceActiveInMonth, normalizeText } from "./utils";
+import { capitalizeWords, getLocalDateString, isSourceActiveInMonth, normalizeText } from "./utils";
 import { buildProducts, type ProductTxRow } from "./products";
 import type {
   IncomeSource, IncomeSourceAmount, FixedBill, CreditCard, CardTransaction, Category,
@@ -95,8 +95,12 @@ export async function getIncomeSourceAmounts(sourceId?: string): Promise<IncomeS
     .order("effective_month", { ascending: false });
   if (sourceId) query = (query as any).eq("source_id", sourceId);
   const { data, error } = await query;
-  // Retorna [] se tabela ainda não existe no banco (migration pendente)
-  if (error) return [];
+  if (error) {
+    // Migration pendente: segue só com o valor base. Outras falhas não podem passar
+    // em silêncio, porque a renda e o saldo ficariam errados sem aviso.
+    if (isMissingTableError(error)) return [];
+    throw error;
+  }
   return (data ?? []) as IncomeSourceAmount[];
 }
 
@@ -428,7 +432,7 @@ export async function toggleBillPaid(
     .from("monthly_bill_payments")
     .upsert({
       bill_id: billId, month, year, paid, amount,
-      paid_date: paid ? new Date().toISOString().split("T")[0] : null,
+      paid_date: paid ? getLocalDateString() : null,
     }, { onConflict: "bill_id,month,year" })
     .select()
     .single();
@@ -471,7 +475,7 @@ export async function toggleCardPaid(
     .from("monthly_card_payments")
     .upsert({
       card_id: cardId, month, year, paid, total_amount: totalAmount,
-      paid_date: paid ? new Date().toISOString().split("T")[0] : null,
+      paid_date: paid ? getLocalDateString() : null,
     }, { onConflict: "card_id,month,year" })
     .select()
     .single();
@@ -519,46 +523,12 @@ export async function toggleIncomeReceived(
     .from("monthly_incomes")
     .upsert({
       source_id: sourceId, month, year, received, amount,
-      received_date: received ? new Date().toISOString().split("T")[0] : null,
+      received_date: received ? getLocalDateString() : null,
     }, { onConflict: "source_id,month,year" })
     .select()
     .single();
   if (error) throw error;
   return data;
-}
-
-// ─── Dashboard / Análise ──────────────────────────────────────────────────────
-
-/** Resumo anual: 12 meses com totais de renda, contas e cartões */
-export async function getYearlySummary(year: number) {
-  const months = Array.from({ length: 12 }, (_, i) => i + 1);
-  const results = await Promise.all(
-    months.map(async (month) => {
-      const [incomes, bills, txs] = await Promise.all([
-        getMonthlyIncomes(month, year),
-        getMonthlyBillPayments(month, year),
-        getCardTransactions(month, year),
-      ]);
-      const totalIncome = incomes.reduce((s, i) => s + i.amount, 0);
-      const totalBills  = bills.reduce((s, b) => s + (b.amount ?? b.fixed_bills?.amount ?? 0), 0);
-      const totalCards  = txs.reduce((s, t) => s + Math.abs(t.amount), 0);
-      return { month, year, totalIncome, totalBills, totalCards };
-    })
-  );
-  return results;
-}
-
-/** Totais de transações de cartão por mês para um ano inteiro */
-export async function getCardTotalsByMonth(year: number): Promise<Record<number, number>> {
-  const results: Record<number, number> = {};
-  await Promise.all(
-    Array.from({ length: 12 }, async (_, i) => {
-      const m = i + 1;
-      const txs = await getCardTransactions(m, year);
-      results[m] = txs.reduce((s, t) => s + Math.abs(t.amount), 0);
-    })
-  );
-  return results;
 }
 
 // ─── Balance Overrides ───────────────────────────────────────────────────────

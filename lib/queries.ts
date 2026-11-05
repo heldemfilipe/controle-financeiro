@@ -219,54 +219,29 @@ export async function deleteCardTransaction(id: string) {
   if (error) throw error;
 }
 
-type InstallmentRef = Pick<
-  CardTransaction,
-  "card_id" | "description" | "installment_total" | "installment_current"
->;
-
-/** IDs desta parcela e das seguintes, ignorando maiúsculas e acentos na descrição */
-async function getFollowingInstallmentIds(tx: InstallmentRef): Promise<string[]> {
-  const { data, error } = await supabase
-    .from("card_transactions")
-    .select("id, description")
-    .eq("card_id", tx.card_id)
-    .eq("installment_total", tx.installment_total)
-    .gte("installment_current", tx.installment_current);
-  if (error) throw error;
-  const key = normalizeText(tx.description);
-  return (data ?? []).filter(t => normalizeText(t.description) === key).map(t => t.id);
-}
+type InstallmentRef = Pick<CardTransaction, "id" | "purchase_id" | "installment_current">;
 
 /** Remove esta parcela e todas as seguintes da mesma compra */
 export async function deleteCardTransactionsFollowing(tx: InstallmentRef) {
-  const ids = await getFollowingInstallmentIds(tx);
-  if (!ids.length) return;
+  // Sem purchase_id não há como saber quais parcelas são da compra: mexe só nesta
+  if (!tx.purchase_id) return deleteCardTransaction(tx.id);
   const { error } = await supabase
     .from("card_transactions")
     .delete()
-    .in("id", ids);
+    .eq("purchase_id", tx.purchase_id)
+    .gte("installment_current", tx.installment_current);
   if (error) throw error;
 }
 
-/** Propaga categoria para esta parcela e todas as seguintes */
-export async function updateCategoryForFollowing(tx: InstallmentRef, category: string | null) {
-  const ids = await getFollowingInstallmentIds(tx);
-  if (!ids.length) return;
-  const { error } = await supabase
-    .from("card_transactions")
-    .update({ category })
-    .in("id", ids);
-  if (error) throw error;
-}
-
-/** Propaga o valor para esta parcela e todas as seguintes da mesma compra */
-export async function updateAmountForFollowing(tx: InstallmentRef, amount: number) {
-  const ids = await getFollowingInstallmentIds(tx);
-  if (!ids.length) return;
-  const { error } = await supabase
-    .from("card_transactions")
-    .update({ amount })
-    .in("id", ids);
+/** Aplica a alteração nesta parcela e em todas as seguintes da mesma compra */
+export async function updateFollowingInstallments(
+  tx: InstallmentRef,
+  changes: Pick<Partial<CardTransaction>, "amount" | "category" | "description">,
+) {
+  const query = supabase.from("card_transactions").update(withCapitalizedDescription(changes));
+  const { error } = tx.purchase_id
+    ? await query.eq("purchase_id", tx.purchase_id).gte("installment_current", tx.installment_current)
+    : await query.eq("id", tx.id);
   if (error) throw error;
 }
 

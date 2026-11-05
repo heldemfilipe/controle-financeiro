@@ -107,6 +107,8 @@ export interface CardTransaction {
   month: number;
   year: number;
   category?: string | null;
+  /** Liga as parcelas da mesma compra; vazio em compras à vista */
+  purchase_id?: string | null;
   created_at: string;
   credit_cards?: CreditCard;
 }

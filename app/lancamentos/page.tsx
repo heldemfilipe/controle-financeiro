@@ -11,7 +11,7 @@ import {
   getCategories,
   getCreditCards, upsertCreditCard,
   getCardTransactions, upsertCardTransaction, deleteCardTransaction,
-  deleteCardTransactionsFollowing, updateCategoryForFollowing, updateAmountForFollowing,
+  deleteCardTransactionsFollowing, updateFollowingInstallments,
   insertCardTransactions,
   getMonthlyIncomes, upsertMonthlyIncome, deleteMonthlyIncome,
   getTransactionSuggestions, upsertMonthlyBillPayment, getIncomeSourceAmounts,
@@ -253,18 +253,12 @@ export default function LancamentosPage() {
         await upsertCardTransaction({ ...txPayload, category, amount: signedAmount });
 
         if (totalInstallments > 1) {
-          const followRef = {
-            card_id: txPayload.card_id,
+          // Valor e nome seguem para as próximas parcelas; a categoria, só se solicitado
+          await updateFollowingInstallments(txPayload, {
+            amount: signedAmount,
             description: txPayload.description,
-            installment_total: txPayload.installment_total,
-            installment_current: txPayload.installment_current,
-          };
-          // Propaga valor automaticamente para parcelas seguintes
-          await updateAmountForFollowing(followRef, signedAmount);
-          // Propaga categoria se solicitado
-          if (propagateCategory) {
-            await updateCategoryForFollowing(followRef, category);
-          }
+            ...(propagateCategory ? { category } : {}),
+          });
         }
       } else if (totalInstallments === 1) {
         // Compra à vista
@@ -281,9 +275,11 @@ export default function LancamentosPage() {
         const startMonth = editTx.month ?? month;
         const startYear  = editTx.year  ?? year;
         const remaining  = totalInstallments - startInst + 1;
+        const purchaseId = crypto.randomUUID();
         let m = startMonth, y = startYear;
         const parcelas = Array.from({ length: remaining }, (_, i) => {
           const entry = {
+            purchase_id: purchaseId,
             card_id: editTx.card_id!,
             description: editTx.description!,
             amount: sign * parseFloat(perInstallment.toFixed(2)),
